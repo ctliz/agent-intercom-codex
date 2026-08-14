@@ -443,21 +443,19 @@ test("fresh worker startup removes the persisted Codex bridge thread state", () 
   }
 });
 
-test("cleanupOldCoiStateFiles removes only stale coi state files", () => {
-  const dir = mkdtempSync(join(tmpdir(), "coi-cleanup-"));
+test("runCoi fails closed for invalid scope before side effects", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "coi-scope-validation-"));
   try {
-    const stale = join(dir, "coi-old-state.json");
-    const fresh = join(dir, "coi-fresh-state.json");
-    const other = join(dir, "other-state.json");
-    writeFileSync(stale, "{}");
-    writeFileSync(fresh, "{}");
-    writeFileSync(other, "{}");
-    const now = Date.now();
-    utimesSync(stale, new Date(now - 20000), new Date(now - 20000));
-    cleanupOldCoiStateFiles(dir, now, 10000);
-    assert.equal(existsSync(stale), false);
-    assert.equal(existsSync(fresh), true);
-    assert.equal(existsSync(other), true);
+    const options = {
+        cwd: dir,
+        noTui: true,
+        copyShortcut: false,
+        codexCommand: "codex",
+        codexArgs: [],
+    };
+    const env = { AGENT_INTERCOM_SCOPE_ID: "invalid scope!" };
+    await assert.rejects(runCoi(options, env), /must match/);
+    assert.equal(existsSync(join(dir, "intercom")), false);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

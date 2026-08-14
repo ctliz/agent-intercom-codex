@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-process.stderr.write("[agent-intercom-build] package=@dataforxyz/agent-intercom-codex version=0.10.0 target=codex-server sourceSha256=1aea5fbf55e45c0849101f166733a90aecd14df2f9159888c75bd2b99c8df505\n");
+process.stderr.write("[agent-intercom-build] package=@dataforxyz/agent-intercom-codex version=0.11.0-connect.1 target=codex-server sourceSha256=06595db44df7c2b5bde69d1ddc1ef05fa18687ce76d74e7ccaa55e7b9e7e9e2d\n");
 
 // codex/server.ts
 import readline from "node:readline";
@@ -85,6 +85,21 @@ function createMessageReader(onMessage, onError, maxFrameBytes = MAX_FRAME_BYTES
   };
 }
 
+// protocol-v4/contract.ts
+import {
+  INTERCOM_PROTOCOL_NAME,
+  INTERCOM_PROTOCOL_V4_SEMANTICS_HASH,
+  INTERCOM_PROTOCOL_V4_VECTOR_SCHEMA_VERSION,
+  INTERCOM_PROTOCOL_V4_VECTORS,
+  INTERCOM_PROTOCOL_VERSION,
+  INTERCOM_SCOPE_ENV,
+  INTERCOM_SCOPE_ID_PATTERN,
+  INTERCOM_SCOPE_ID_PATTERN_SOURCE,
+  intercomScopeIdFromEnv,
+  parseIntercomScopeId,
+  sameIntercomScope
+} from "@dataforxyz/agent-intercom-core/protocol-v4";
+
 // outbound-outbox.ts
 import { createHash } from "crypto";
 import { chmodSync as chmodSync2, existsSync, mkdirSync as mkdirSync2, readFileSync as readFileSync2, renameSync as renameSync2 } from "fs";
@@ -97,8 +112,8 @@ import { homedir } from "os";
 var INTERCOM_DIR_MODE = 448;
 var INTERCOM_RUNTIME_FILE_MODE = 384;
 var INTERCOM_TCP_HOST = "127.0.0.1";
-var INTERCOM_PROTOCOL_NAME = "pi-intercom";
-var INTERCOM_PROTOCOL_VERSION = 3;
+var INTERCOM_PROTOCOL_NAME2 = "pi-intercom";
+var INTERCOM_PROTOCOL_VERSION2 = 4;
 function sanitizePipeSegment(value) {
   return value.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").toLowerCase() || "default";
 }
@@ -456,10 +471,10 @@ function parseExactRegistrationFrame(value) {
   const registrationKind = optionalOwnDataValue(value, "registrationKind");
   const kind = exactRegistrationKind(session, registrationKind);
   if (kind === "ordinary") {
-    assertExactKeys(value, ["type", "protocol", "version", "session"], ["sessionId", "stateId", "access"]);
+    assertExactKeys(value, ["type", "protocol", "version", "session"], ["sessionId", "stateId", "access", "scopeId"]);
     assertExactKeys(session, ORDINARY_SESSION_REGISTRATION_KEYS, OPTIONAL_SESSION_REGISTRATION_KEYS);
   } else {
-    assertExactKeys(value, ["type", "registrationKind", "protocol", "version", "session"], ["sessionId", "stateId"]);
+    assertExactKeys(value, ["type", "registrationKind", "protocol", "version", "session"], ["sessionId", "stateId", "scopeId"]);
     assertExactKeys(session, [...ORDINARY_SESSION_REGISTRATION_KEYS, "boss"], OPTIONAL_SESSION_REGISTRATION_KEYS);
     parseBossParticipantRegistrationMetadata(ownDataValue(session, "boss"));
   }
@@ -897,6 +912,7 @@ function isRemoteAccessMetadata(value) {
 }
 var IntercomClient = class extends EventEmitter {
   socket = null;
+  scopeId;
   _sessionId = null;
   pendingSends = /* @__PURE__ */ new Map();
   pendingLists = /* @__PURE__ */ new Map();
@@ -909,6 +925,10 @@ var IntercomClient = class extends EventEmitter {
   _bossBinding;
   disconnecting = false;
   disconnectError = null;
+  constructor(options = {}) {
+    super();
+    this.scopeId = options.scopeId === void 0 ? intercomScopeIdFromEnv(options.env ?? process.env) : parseIntercomScopeId(options.scopeId, "scopeId");
+  }
   failPending(error2) {
     for (const pending of this.pendingSends.values()) {
       pending.reject(error2);
@@ -966,8 +986,8 @@ var IntercomClient = class extends EventEmitter {
       const canonicalSession = parseExactRegistrationFrame({
         type: "register",
         ...typeof session === "object" && session !== null && !nodeUtilTypes2.isProxy(session) && Object.getOwnPropertyDescriptor(session, "boss") !== void 0 ? { registrationKind: "boss" } : {},
-        protocol: INTERCOM_PROTOCOL_NAME,
-        version: INTERCOM_PROTOCOL_VERSION,
+        protocol: INTERCOM_PROTOCOL_NAME2,
+        version: INTERCOM_PROTOCOL_VERSION2,
         session
       }).session;
       this.requestedBossRegistration = session.boss === void 0 ? void 0 : parseBossParticipantRegistrationMetadata(session.boss);
@@ -1077,11 +1097,12 @@ var IntercomClient = class extends EventEmitter {
         writeMessage(socket, {
           type: "register",
           ...session.boss === void 0 ? {} : { registrationKind: "boss" },
-          protocol: INTERCOM_PROTOCOL_NAME,
-          version: INTERCOM_PROTOCOL_VERSION,
+          protocol: INTERCOM_PROTOCOL_NAME2,
+          version: INTERCOM_PROTOCOL_VERSION2,
           session,
           ...!this.remoteAccessCredential && sessionId ? { sessionId } : {},
           ...this.remoteAccessCredential ? { access: this.remoteAccessCredential.access } : {},
+          ...this.scopeId ? { scopeId: this.scopeId } : {},
           ...typeof target === "string" ? {} : { stateId: target.stateId }
         });
       } catch (error2) {
@@ -1111,7 +1132,7 @@ var IntercomClient = class extends EventEmitter {
           brokerMessage,
           this.requestedBossRegistration === void 0 ? this.remoteAccessCredential === void 0 ? "ordinary-local" : "ordinary-remote" : "boss"
         );
-        if (typeof brokerMessage.sessionId !== "string" || brokerMessage.protocol !== INTERCOM_PROTOCOL_NAME || brokerMessage.version !== INTERCOM_PROTOCOL_VERSION) {
+        if (typeof brokerMessage.sessionId !== "string" || brokerMessage.protocol !== INTERCOM_PROTOCOL_NAME2 || brokerMessage.version !== INTERCOM_PROTOCOL_VERSION2) {
           throw new Error("Invalid registered message");
         }
         if (this._sessionId !== null) {
@@ -1672,7 +1693,7 @@ function isBrokerHealthOkMessage(message, requestId) {
     return false;
   }
   const response = message;
-  if (response.type !== "health_ok" || response.requestId !== requestId || response.protocol !== INTERCOM_PROTOCOL_NAME || response.version !== INTERCOM_PROTOCOL_VERSION || response.endpoint !== "local") return false;
+  if (response.type !== "health_ok" || response.requestId !== requestId || response.protocol !== INTERCOM_PROTOCOL_NAME2 || response.version !== INTERCOM_PROTOCOL_VERSION2 || response.endpoint !== "local") return false;
   const remoteAccess = response.remoteAccess;
   if (typeof remoteAccess !== "object" || remoteAccess === null || Array.isArray(remoteAccess)) return false;
   const contract = remoteAccess;
@@ -1738,7 +1759,7 @@ async function spawnBrokerIfNeeded(brokerCommand, brokerArgs) {
       return;
     }
     if (await checkBrokerHealth() === "incompatible") {
-      await stopBrokerProcess();
+      throw new Error(`Incompatible live intercom broker; expected ${INTERCOM_PROTOCOL_NAME2} v${INTERCOM_PROTOCOL_VERSION2}. Stop it explicitly during a coordinated migration.`);
     }
     const brokerPath = getBrokerEntryPath();
     const launch = getBrokerLaunchSpec(brokerPath, brokerCommand, brokerArgs);
@@ -1780,31 +1801,6 @@ async function spawnBrokerIfNeeded(brokerCommand, brokerArgs) {
   } finally {
     releaseSpawnLock();
   }
-}
-async function stopBrokerProcess(pidFile = BROKER_PID, timeoutMs = 3e3) {
-  if (!existsSync3(pidFile)) return;
-  let pid;
-  try {
-    pid = Number.parseInt(readFileSync5(pidFile, "utf-8").trim(), 10);
-  } catch {
-    return;
-  }
-  if (!Number.isSafeInteger(pid) || pid <= 0 || pid === process.pid) return;
-  try {
-    process.kill(pid, "SIGTERM");
-  } catch {
-    return;
-  }
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < timeoutMs) {
-    try {
-      process.kill(pid, 0);
-      await sleep(50);
-    } catch {
-      return;
-    }
-  }
-  throw new Error(`Incompatible intercom broker ${pid} did not stop within ${timeoutMs}ms`);
 }
 async function isBrokerRunning() {
   if (await checkSocketConnectable()) {
@@ -2361,7 +2357,8 @@ var CodexIntercomRuntime = class {
   reconnectDelays;
   constructor(identity = buildCodexRuntimeIdentity(), options = {}) {
     this.identity = identity;
-    this.clientFactory = options.clientFactory ?? (() => new IntercomClient());
+    const initialScopeId = intercomScopeIdFromEnv();
+    this.clientFactory = options.clientFactory ?? (() => new IntercomClient(initialScopeId ? { scopeId: initialScopeId } : {}));
     this.prepareConnection = options.prepareConnection ?? (async () => {
       const config = loadConfig();
       if (!config.enabled) throw new Error("Intercom disabled");

@@ -9,11 +9,29 @@
 
 | Harness | Repository |
 |---|---|
-| Pi | [`agent-intercom-pi`](https://github.com/dataforxyz/agent-intercom-pi) |
-| Codex | [`agent-intercom-codex`](https://github.com/dataforxyz/agent-intercom-codex) |
-| Claude Code | [`agent-intercom-claude`](https://github.com/dataforxyz/agent-intercom-claude) |
-| OpenCode | [`agent-intercom-opencode`](https://github.com/dataforxyz/agent-intercom-opencode) |
-| Fleet lifecycle | [`agent-intercom-orchestrator`](https://github.com/dataforxyz/agent-intercom-orchestrator) |
+| Core / Protocol | [`agent-intercom-core`](https://github.com/ctliz/agent-intercom-core) |
+| Pi | [`agent-intercom-pi`](https://github.com/ctliz/agent-intercom-pi) |
+| Codex | [`agent-intercom-codex`](https://github.com/ctliz/agent-intercom-codex) |
+| Claude Code | [`agent-intercom-claude`](https://github.com/ctliz/agent-intercom-claude) |
+| OpenCode | [`agent-intercom-opencode`](https://github.com/ctliz/agent-intercom-opencode) |
+| Fleet lifecycle | [`agent-intercom-orchestrator`](https://github.com/ctliz/agent-intercom-orchestrator) |
+
+## Maintenance & Upstream Provenance
+
+- **Maintained by `ctliz`**: This distribution is maintained independently by [ctliz](https://github.com/ctliz).
+- **Upstream Heritage**: Agent Intercom grew from [Nico Bailon's original `pi-intercom`](https://github.com/nicobailon/pi-intercom) and the upstream [`dataforxyz/agent-intercom-*`](https://github.com/dataforxyz/agent-intercom-codex) repositories. This project is not officially endorsed by or affiliated with upstream organizations.
+- **Branding & Compatibility**: The **Agent Intercom** branding and `@dataforxyz/*` package namespaces remain unchanged for full ecosystem compatibility across all agent adapters.
+
+## Protocol v4 & Broker-Enforced Scope
+
+Agent Intercom protocol v4 introduces **broker-enforced scope routing** via `AGENT_INTERCOM_SCOPE_ID`:
+
+- **Registration**: The client submits its `scopeId` once in the top-level registration payload.
+- **Broker Enforcement**: The shared local broker stores the scope in its private `ConnectedSession` record and enforces same-scope discovery (`intercom_list`), naming, and prefix matching.
+- **Cross-Scope Routing**: Cross-scope messaging is fail-closed; communication across different scopes is permitted only when addressing an explicit full session ID.
+- **UX Routing Isolation**: Scope is designed for same-OS-user workflow isolation (e.g. per-project or per-workspace agent teams), **not** as a cryptographic security principal, tenant boundary, or authentication credential.
+- **Leak-Free**: The raw `scopeId` value never enters `SessionInfo`, list payloads, lifecycle events, frontend displays, or execution logs.
+- **Standalone First**: `AGENT_INTERCOM_SCOPE_ID` is a general shell/IDE/service launcher contract. Agent Intercom works completely standalone in any terminal, tmux window, or script; TmuxDeck is optional visual tooling.
 
 ## Origin and thanks
 
@@ -21,12 +39,12 @@ Agent Intercom grew from [Nico Bailon's original `pi-intercom`](https://github.c
 
 This repository contains the Codex adapter. It gives Codex sessions native intercom tools and wakeable workers while remaining fully interoperable with the other Agent Intercom harnesses.
 
-The bundled client and broker use strict intercom protocol v3. A send is only
+The bundled client and broker use strict intercom protocol v4. A send is only
 reported as delivered after the receiving adapter acknowledges it. Unfinished
 outbound sends are persisted under the shared intercom runtime directory and
 replayed with their original IDs after reconnect, making retries safe with
-receiver deduplication. Any v3 adapter can also replace an incompatible older
-local broker, so Pi does not need to start first.
+receiver deduplication. Incompatible older local brokers fail closed without
+killing, downgrading, or creating second islands.
 
 The project has two related pieces:
 
@@ -58,7 +76,7 @@ in a phantom `Working` state. Retryable app-server stream errors are reported as
 
 The additive Stage-B `boss-run-v1` adapter contracts are present but dormant.
 Ordinary local and remote-access communication continues to use the existing
-protocol-v3 behavior when Boss metadata is omitted. The legacy broker does not
+protocol-v4 behavior when Boss metadata is omitted. The legacy broker does not
 advertise or bind Boss participants until a protected provider supplies all of
 the required broker identity, credential-registry, authority-transition, and
 participant-health predicates. Boss-scoped discovery and routing fail closed
@@ -79,8 +97,11 @@ For normal use, install the package so the command-line entry points are on
 `PATH`:
 
 ```bash
-npm install -g @dataforxyz/agent-intercom-codex
+git clone --depth 1 --branch v0.11.0-connect.1 https://github.com/ctliz/agent-intercom-codex.git
+cd agent-intercom-codex && npm ci && npm link
 ```
+
+> The public npm package `@dataforxyz/agent-intercom-codex` is **not yet published**. GitHub at the exact connect tag is the only supported install path for this release.
 
 This provides:
 
@@ -111,8 +132,8 @@ stable names or IDs.
 To let a Pi manager create Codex workers with owned systemd cgroups, leases, model/effort selection, logs, and verified cleanup, install the companion Pi packages:
 
 ```bash
-pi install npm:@dataforxyz/agent-intercom-pi
-pi install npm:@dataforxyz/agent-intercom-orchestrator
+pi install git:github.com/ctliz/agent-intercom-pi@v0.11.0-connect.1
+pi install git:github.com/ctliz/agent-intercom-orchestrator@v0.11.0-connect.1
 ```
 
 Restart Pi or run `/reload`, then call `agent_fleet({ action: "doctor" })`. The orchestrator invokes the installed `coi` command, or a separately configured minimal wrapper such as `coim`; it does not replace this Codex adapter.
@@ -136,7 +157,7 @@ intercom tools.
 - `intercom_whoami`: show this session's intercom ID, name, cwd, and model.
 - `intercom_team`: show the current manager and live coworkers owned by that manager.
 - `intercom_status`: show connection status and pending message counts.
-- `intercom_list`: list local Pi, Codex, Claude Code, and OpenCode sessions globally.
+- `intercom_list`: list local Pi, Codex, Claude Code, and OpenCode sessions in your scope (protocol v4 is same-scope; cross-scope contact requires an exact full session ID).
 - `intercom_set_summary`: publish a short discoverable status.
 - `intercom_send`: send a non-blocking message.
 - `intercom_ask`: send a question and wait for the target's reply.
@@ -467,7 +488,7 @@ authority.
 Clone and run from source:
 
 ```bash
-git clone https://github.com/dataforxyz/agent-intercom-codex.git
+git clone https://github.com/ctliz/agent-intercom-codex.git
 cd agent-intercom-codex
 npm install
 npm run build
@@ -509,6 +530,13 @@ The release workflow verifies that the tag points into `main`, runs typecheck,
 tests, and the build, publishes the public npm package with trusted OIDC
 provenance, and creates the GitHub Release. Existing npm versions and GitHub
 Releases are skipped safely when a workflow is rerun.
+
+## Compatibility, Migration & Rollback
+
+- **Single Shared Broker**: All adapters on the machine connect to one local broker over a Unix domain socket (`~/.pi/agent/intercom/broker.sock` or `$PI_CODING_AGENT_DIR/intercom/broker.sock`).
+- **All-or-Nothing Family Upgrade**: Protocol v4 is a family-wide change. Every adapter on the machine (`pi`, `claude`, `codex`, `opencode`, `orchestrator`) must be upgraded together in the same maintenance window. A partially upgraded machine is not a supported configuration.
+- **Fail-Closed Legacy Handling**: An incompatible legacy (v3) broker or client fails closed. It is rejected at negotiation and never killed, never downgraded, and never allowed to form a second broker island.
+- **Family Rollback (all-or-nothing)**: Rolling back is family-wide. Restore the exact specs and lockfiles you backed up before the upgrade, for every adapter together, then reload all active agent sessions. There is no published pre-v4 tag under `ctliz` to roll back to, so a pre-upgrade backup of the exact installed specs/locks is the supported rollback material. Rolling back only one adapter leaves the family in an unsupported mixed state.
 
 ## License
 

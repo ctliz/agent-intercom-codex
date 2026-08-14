@@ -234,10 +234,10 @@ export function parseExactRegistrationFrame(value: unknown): Extract<ClientMessa
   const registrationKind = optionalOwnDataValue(value, "registrationKind");
   const kind = exactRegistrationKind(session, registrationKind);
   if (kind === "ordinary") {
-    assertExactKeys(value, ["type", "protocol", "version", "session"], ["sessionId", "stateId", "access"]);
+    assertExactKeys(value, ["type", "protocol", "version", "session"], ["sessionId", "stateId", "access", "scopeId"]);
     assertExactKeys(session, ORDINARY_SESSION_REGISTRATION_KEYS, OPTIONAL_SESSION_REGISTRATION_KEYS);
   } else {
-    assertExactKeys(value, ["type", "registrationKind", "protocol", "version", "session"], ["sessionId", "stateId"]);
+    assertExactKeys(value, ["type", "registrationKind", "protocol", "version", "session"], ["sessionId", "stateId", "scopeId"]);
     assertExactKeys(session, [...ORDINARY_SESSION_REGISTRATION_KEYS, "boss"], OPTIONAL_SESSION_REGISTRATION_KEYS);
     parseBossParticipantRegistrationMetadata(ownDataValue(session, "boss"));
   }

@@ -210,7 +210,7 @@ export async function spawnBrokerIfNeeded(brokerCommand: string, brokerArgs: str
       return;
     }
     if (await checkBrokerHealth() === "incompatible") {
-      await stopBrokerProcess();
+      throw new Error(`Incompatible live intercom broker; expected ${INTERCOM_PROTOCOL_NAME} v${INTERCOM_PROTOCOL_VERSION}. Stop it explicitly during a coordinated migration.`);
     }
 
     const brokerPath = getBrokerEntryPath();

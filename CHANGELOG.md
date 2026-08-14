@@ -1,7 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.11.0-connect.1 - 2026-08-14
 
+- Support Protocol v4 broker-enforced scope isolation (`AGENT_INTERCOM_SCOPE_ID`) and canonical `ctliz` distribution.
+- Pin Core dependency to canonical commit `aad1985e125516b318181560293145bf2507cc6d` (`v0.1.0-connect.1`).
 - Reject competing live runtimes that claim an active stable session ID while preserving legitimate reconnects and pending deliveries.
 - Add ID-free `oldest`/`latest` selection for multiple pending asks from one sender, hide protocol IDs from pending output, and refuse a second unresolved ask to the same recipient.
 - Automatically reconnect persistent bridges and MCP runtimes with their stable Intercom identity after broker restarts.

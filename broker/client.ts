@@ -8,6 +8,7 @@ import {
   type BossControlEnvelope,
 } from "@dataforxyz/agent-intercom-core/boss";
 import { writeMessage, createMessageReader } from "./framing.ts";
+import { intercomScopeIdFromEnv, parseIntercomScopeId } from "../protocol-v4/contract.ts";
 import { PersistentOutboundOutbox } from "../outbound-outbox.ts";
 import { PersistentBossControlOutbox } from "../boss-control-outbox.ts";
 import { loadRemoteAccessCredential, writeRemoteSessionCredential, type LoadedRemoteAccessCredential } from "./access-credential.ts";
@@ -207,8 +208,16 @@ function isRemoteAccessMetadata(value: unknown): value is import("../types.ts").
     && (access.sessionCredential === undefined || typeof access.sessionCredential === "string");
 }
 
+export interface IntercomClientOptions {
+  /** Exact private registration scope captured for this client lifecycle. */
+  scopeId?: string;
+  /** Environment used only when scopeId is not explicitly supplied. */
+  env?: NodeJS.ProcessEnv;
+}
+
 export class IntercomClient extends EventEmitter {
   private socket: net.Socket | null = null;
+  private readonly scopeId: string | undefined;
   private _sessionId: string | null = null;
   private pendingSends = new Map<string, {
     accepted: boolean;
@@ -233,6 +242,13 @@ export class IntercomClient extends EventEmitter {
   private _bossBinding: BossParticipantBindingMetadata | undefined;
   private disconnecting = false;
   private disconnectError: Error | null = null;
+
+  constructor(options: IntercomClientOptions = {}) {
+    super();
+    this.scopeId = options.scopeId === undefined
+      ? intercomScopeIdFromEnv(options.env ?? process.env)
+      : parseIntercomScopeId(options.scopeId, "scopeId");
+  }
 
   private failPending(error: Error): void {
     for (const pending of this.pendingSends.values()) {
@@ -436,6 +452,7 @@ export class IntercomClient extends EventEmitter {
           session,
           ...(!this.remoteAccessCredential && sessionId ? { sessionId } : {}),
           ...(this.remoteAccessCredential ? { access: this.remoteAccessCredential.access } : {}),
+          ...(this.scopeId ? { scopeId: this.scopeId } : {}),
           ...(typeof target === "string" ? {} : { stateId: target.stateId }),
         });
       } catch (error) {

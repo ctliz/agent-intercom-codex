@@ -6,6 +6,7 @@ import { basename, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { types as nodeUtilTypes } from "node:util";
 import { CodexBridgeDaemon } from "./bridge-daemon.ts";
+import { intercomScopeIdFromEnv } from "../protocol-v4/contract.ts";
 import {
   assertHardenedBossAgentConfig,
   parseHardenedBossClientKind,
@@ -619,6 +620,7 @@ export function resetCoiStateForFreshStart(statePath: string, fresh: boolean): v
 }
 
 export async function runCoi(options: CoiOptions, env: NodeJS.ProcessEnv = process.env): Promise<number> {
+  const scopeId = intercomScopeIdFromEnv(env);
   const bossClient = parseHardenedBossClientKind(env.CODEX_INTERCOM_BOSS_CLIENT?.trim(), "CODEX_INTERCOM_BOSS_CLIENT");
   // No provider executable/artifact authority is broker-owned yet. Fail
   // before help, app-server, headless, TUI, refresh, or runtime-file setup.
@@ -709,7 +711,7 @@ export async function runCoi(options: CoiOptions, env: NodeJS.ProcessEnv = proce
       terminalNotification(`Intercom turn from ${from.name || from.id} completed: ${response}`);
       setTimeout(() => refreshVisibleTui?.(), 1000).unref();
     },
-  });
+  }, scopeId);
   await daemon.start();
   process.stderr.write(`coi intercom session: ${name} (${id})\n`);
 

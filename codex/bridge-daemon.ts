@@ -299,6 +299,7 @@ export class VirtualCodexAgent {
   private readonly intercomStartedAt = Date.now();
   private readonly prepareConnection: () => Promise<void>;
   private readonly reconnectDelays: number[];
+  private readonly scopeId: string | undefined;
 
   constructor(
     private readonly agent: BridgeAgentConfig,
@@ -307,9 +308,11 @@ export class VirtualCodexAgent {
     private readonly statePath: string,
     private readonly hooks: CodexBridgeHooks = {},
     options: VirtualCodexAgentOptions = {},
+    scopeId?: string,
   ) {
     this.threadId = agent.threadId ?? state.agents[agent.id]?.threadId ?? null;
-    this.client = options.client ?? new IntercomClient();
+    this.scopeId = scopeId;
+    this.client = options.client ?? new IntercomClient(scopeId ? { scopeId } : {});
     this.prepareConnection = options.prepareConnection ?? (async () => {
       const config = loadConfig();
       await spawnBrokerIfNeeded(config.brokerCommand, config.brokerArgs);
@@ -775,7 +778,7 @@ export class CodexBridgeDaemon {
   private agents: VirtualCodexAgent[] = [];
   private inflightToolCalls = new Map<string | number, AbortController>();
 
-  constructor(private readonly config: BridgeConfig, private readonly hooks: CodexBridgeHooks = {}) {
+  constructor(private readonly config: BridgeConfig, private readonly hooks: CodexBridgeHooks = {}, private readonly scopeId?: string) {
     // A marker is deny-only here: no config field can provide executable or
     // artifact authority.
     const protectedBossClient = protectedBossClientForBridge(config);
@@ -805,7 +808,7 @@ export class CodexBridgeDaemon {
       }
       for (const agent of this.agents) agent.onNotification(message);
     });
-    this.agents = this.config.agents.map((agent) => new VirtualCodexAgent(agent, this.app, state, this.config.statePath, this.hooks));
+    this.agents = this.config.agents.map((agent) => new VirtualCodexAgent(agent, this.app, state, this.config.statePath, this.hooks, {}, this.scopeId));
     for (const agent of this.agents) await agent.start();
     process.stderr.write(`codex-intercom bridge running ${this.agents.length} virtual agent(s)\n`);
   }

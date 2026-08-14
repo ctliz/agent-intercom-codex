@@ -7,8 +7,8 @@
     "email": "support@datafor.xyz",
     "url": "https://github.com/dataforxyz"
   },
-  "homepage": "https://github.com/dataforxyz/agent-intercom-codex",
-  "repository": "https://github.com/dataforxyz/agent-intercom-codex",
+  "homepage": "https://github.com/ctliz/agent-intercom-codex",
+  "repository": "https://github.com/ctliz/agent-intercom-codex",
   "license": "AGPL-3.0-or-later",
   "keywords": [
     "intercom",
@@ -28,9 +28,9 @@
     "capabilities": [
       "Interactive"
     ],
-    "websiteURL": "https://github.com/dataforxyz/agent-intercom-codex",
-    "privacyPolicyURL": "https://github.com/dataforxyz/agent-intercom-codex",
-    "termsOfServiceURL": "https://github.com/dataforxyz/agent-intercom-codex",
+    "websiteURL": "https://github.com/ctliz/agent-intercom-codex",
+    "privacyPolicyURL": "https://github.com/ctliz/agent-intercom-codex",
+    "termsOfServiceURL": "https://github.com/ctliz/agent-intercom-codex",
     "defaultPrompt": [
       "Use Codex Intercom to coordinate with another local coding-agent session"
     ],

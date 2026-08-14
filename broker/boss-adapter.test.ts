@@ -113,7 +113,7 @@ test("participant registration negotiates the exact Core feature and credential 
       nonce: "nonce-1",
     },
   });
-  assert.equal(registration.featureContract.baseProtocolVersion, 3);
+  assert.equal(registration.featureContract.baseProtocolVersion, 4);
   assert.equal(registration.credential.participantId, "worker-1");
 });
 
@@ -184,7 +184,7 @@ test("ordinary and Boss registration frames use exact non-folding discriminants"
   const ordinary = {
     type: "register",
     protocol: "pi-intercom",
-    version: 3,
+    version: 4,
     session: { cwd: "/tmp", model: "gpt", pid: 1, startedAt: 1, lastActivity: 1 },
   };
   assert.equal(parseExactRegistrationFrame(ordinary).type, "register");
@@ -197,7 +197,7 @@ test("ordinary and Boss registration frames use exact non-folding discriminants"
   ]) assert.throws(() => parseExactRegistrationFrame({ ...ordinary, ...folded }));
   assert.throws(() => parseExactRegistrationFrame({ ...ordinary, session: { ...ordinary.session, boss: {} } }));
 
-  const registered = { type: "registered", sessionId: "session-1", protocol: "pi-intercom", version: 3 };
+  const registered = { type: "registered", sessionId: "session-1", protocol: "pi-intercom", version: 4 };
   assert.equal(parseExactRegisteredFrame(registered, "ordinary-local").type, "registered");
   for (const unsolicited of [
     { registrationKind: "ordinary" },
@@ -238,7 +238,7 @@ test("requested Boss registered frame requires exact capability echo and broker-
     registrationKind: "boss",
     sessionId: "session-manager",
     protocol: "pi-intercom",
-    version: 3,
+    version: 4,
     capabilities,
     boss,
   };

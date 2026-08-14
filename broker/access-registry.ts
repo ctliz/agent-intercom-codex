@@ -293,7 +293,11 @@ export class RemoteAccessRegistry {
     const now = this.now();
     const tokenHash = hashSecret(enrollmentToken);
     const enrollment = this.state.enrollments[tokenHash];
-    if (!enrollment) throw new RemoteAccessError("INVALID_ENROLLMENT", "Enrollment credential is invalid or already consumed");
+    if (!enrollment) {
+        console.error("DEBUG: Enrollment token not found, hash:", tokenHash);
+        throw new RemoteAccessError("INVALID_ENROLLMENT", "Enrollment credential is invalid or already consumed");
+    }
+    console.error("DEBUG: Enrollment consumed, hash:", tokenHash);
     delete this.state.enrollments[tokenHash];
     if (enrollment.expiresAt <= now) {
       this.persist();

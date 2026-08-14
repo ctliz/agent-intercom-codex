@@ -161,7 +161,7 @@ test("built and packaged surfaces use the exact runtime Core peer without an emb
   assert.equal(packageJson.peerDependencies["@dataforxyz/agent-intercom-core"], "0.1.0");
   assert.equal(
     packageJson.devDependencies["@dataforxyz/agent-intercom-core"],
-    "git+https://github.com/dataforxyz/agent-intercom-core.git#8316cbab548f422ad11c78ed887fabeef94817c1",
+    "git+https://github.com/ctliz/agent-intercom-core.git#aad1985e125516b318181560293145bf2507cc6d",
   );
 
   for (const name of ["codex-server.mjs", "broker.mjs", "bridge-daemon.mjs", "coi.mjs"]) {

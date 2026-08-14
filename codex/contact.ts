@@ -29,8 +29,13 @@ export function chooseContactTarget(currentSession: SessionInfo, sessions: Sessi
   };
 }
 
-export function formatContactInstruction(contact: Pick<IntercomContact, "target">): string {
-  return `Intercom send ID: ${contact.target}`;
+export function formatContactInstruction(contact: Pick<IntercomContact, "target" | "id">): string {
+  // v4 contact-copy: always include the full session ID. A human-readable
+  // name/target may accompany it but may not replace it.
+  if (contact.target === contact.id) {
+    return `Intercom send ID: ${contact.id}`;
+  }
+  return `Intercom send ID: ${contact.target} (full ID: ${contact.id})`;
 }
 
 export async function resolveContactTarget(

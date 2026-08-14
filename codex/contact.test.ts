@@ -24,7 +24,17 @@ test("chooseContactTarget prefers a unique session name", () => {
     name: "worker",
     duplicateName: false,
   });
-  assert.equal(formatContactInstruction(contact), "Intercom send ID: worker");
+  assert.equal(
+    formatContactInstruction(contact),
+    "Intercom send ID: worker (full ID: codex-worker-123)",
+  );
+});
+
+test("formatContactInstruction returns full ID when target is the id", () => {
+  assert.equal(
+    formatContactInstruction({ target: "codex-worker-123", id: "codex-worker-123" }),
+    "Intercom send ID: codex-worker-123",
+  );
 });
 
 test("chooseContactTarget falls back to the id for duplicate names", () => {

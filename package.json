@@ -1,6 +1,6 @@
 {
   "name": "@dataforxyz/agent-intercom-codex",
-  "version": "0.10.0",
+  "version": "0.11.0-connect.1",
   "description": "Codex MCP plugin for direct local messaging with Pi and Codex coding-agent sessions.",
   "license": "AGPL-3.0-or-later",
   "type": "module",
@@ -20,6 +20,8 @@
     "!codex/**/*.test.ts",
     "broker/**/*.ts",
     "!broker/**/*.test.ts",
+    "protocol-v4/**/*.ts",
+    "!protocol-v4/**/*.test.ts",
     "provider/protected-service.ts",
     "provider/provider.mjs",
     "!provider/entry.ts",
@@ -50,7 +52,7 @@
     "codex:mcp": "tsx codex/server.ts",
     "codex:bridge": "tsx codex/bridge-daemon.ts",
     "coi": "tsx codex/coi.ts",
-    "test": "node --import tsx --test broker/*.test.ts boss-control-outbox.test.ts outbound-outbox.test.ts codex/*.test.ts provider/*.test.ts scripts/*.test.mjs",
+    "test": "node --import tsx --test broker/*.test.ts boss-control-outbox.test.ts outbound-outbox.test.ts codex/*.test.ts protocol-v4/*.test.ts provider/*.test.ts scripts/*.test.mjs",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [
@@ -67,7 +69,7 @@
     "node-pty": "^1.1.0"
   },
   "devDependencies": {
-    "@dataforxyz/agent-intercom-core": "git+https://github.com/dataforxyz/agent-intercom-core.git#8316cbab548f422ad11c78ed887fabeef94817c1",
+    "@dataforxyz/agent-intercom-core": "git+https://github.com/ctliz/agent-intercom-core.git#aad1985e125516b318181560293145bf2507cc6d",
     "@types/node": "^24.0.0",
     "esbuild": "^0.28.1",
     "tsx": "^4.20.0",
@@ -78,10 +80,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dataforxyz/agent-intercom-codex.git"
+    "url": "git+https://github.com/ctliz/agent-intercom-codex.git"
   },
-  "homepage": "https://github.com/dataforxyz/agent-intercom-codex#readme",
+  "homepage": "https://github.com/ctliz/agent-intercom-codex#readme",
   "bugs": {
-    "url": "https://github.com/dataforxyz/agent-intercom-codex/issues"
+    "url": "https://github.com/ctliz/agent-intercom-codex/issues"
   }
 }

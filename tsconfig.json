@@ -11,6 +11,6 @@
     "target": "ES2022",
     "types": ["node"]
   },
-  "include": ["*.ts", "broker/**/*.ts", "codex/**/*.ts", "provider/**/*.ts"],
+  "include": ["*.ts", "broker/**/*.ts", "codex/**/*.ts", "protocol-v4/**/*.ts", "provider/**/*.ts"],
   "exclude": ["node_modules", "**/*.test.ts"]
 }

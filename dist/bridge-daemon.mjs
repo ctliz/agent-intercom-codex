@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-process.stderr.write("[agent-intercom-build] package=@dataforxyz/agent-intercom-codex version=0.10.0 target=bridge-daemon sourceSha256=1aea5fbf55e45c0849101f166733a90aecd14df2f9159888c75bd2b99c8df505\n");
+process.stderr.write("[agent-intercom-build] package=@dataforxyz/agent-intercom-codex version=0.11.0-connect.1 target=bridge-daemon sourceSha256=06595db44df7c2b5bde69d1ddc1ef05fa18687ce76d74e7ccaa55e7b9e7e9e2d\n");
 
 // codex/bridge-daemon.ts
 import { once } from "node:events";
@@ -510,7 +510,7 @@ var INTERCOM_DIR_MODE = 448;
 var INTERCOM_RUNTIME_FILE_MODE = 384;
 var INTERCOM_TCP_HOST = "127.0.0.1";
 var INTERCOM_PROTOCOL_NAME = "pi-intercom";
-var INTERCOM_PROTOCOL_VERSION = 3;
+var INTERCOM_PROTOCOL_VERSION = 4;
 function sanitizePipeSegment(value) {
   return value.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").toLowerCase() || "default";
 }
@@ -751,10 +751,10 @@ function parseExactRegistrationFrame(value) {
   const registrationKind = optionalOwnDataValue(value, "registrationKind");
   const kind = exactRegistrationKind(session, registrationKind);
   if (kind === "ordinary") {
-    assertExactKeys(value, ["type", "protocol", "version", "session"], ["sessionId", "stateId", "access"]);
+    assertExactKeys(value, ["type", "protocol", "version", "session"], ["sessionId", "stateId", "access", "scopeId"]);
     assertExactKeys(session, ORDINARY_SESSION_REGISTRATION_KEYS, OPTIONAL_SESSION_REGISTRATION_KEYS);
   } else {
-    assertExactKeys(value, ["type", "registrationKind", "protocol", "version", "session"], ["sessionId", "stateId"]);
+    assertExactKeys(value, ["type", "registrationKind", "protocol", "version", "session"], ["sessionId", "stateId", "scopeId"]);
     assertExactKeys(session, [...ORDINARY_SESSION_REGISTRATION_KEYS, "boss"], OPTIONAL_SESSION_REGISTRATION_KEYS);
     parseBossParticipantRegistrationMetadata(ownDataValue(session, "boss"));
   }
@@ -1156,6 +1156,21 @@ function createMessageReader(onMessage, onError, maxFrameBytes = MAX_FRAME_BYTES
     }
   };
 }
+
+// protocol-v4/contract.ts
+import {
+  INTERCOM_PROTOCOL_NAME as INTERCOM_PROTOCOL_NAME2,
+  INTERCOM_PROTOCOL_V4_SEMANTICS_HASH,
+  INTERCOM_PROTOCOL_V4_VECTOR_SCHEMA_VERSION,
+  INTERCOM_PROTOCOL_V4_VECTORS,
+  INTERCOM_PROTOCOL_VERSION as INTERCOM_PROTOCOL_VERSION2,
+  INTERCOM_SCOPE_ENV,
+  INTERCOM_SCOPE_ID_PATTERN,
+  INTERCOM_SCOPE_ID_PATTERN_SOURCE,
+  intercomScopeIdFromEnv,
+  parseIntercomScopeId,
+  sameIntercomScope
+} from "@dataforxyz/agent-intercom-core/protocol-v4";
 
 // outbound-outbox.ts
 import { createHash as createHash2 } from "crypto";
@@ -1594,6 +1609,7 @@ function isRemoteAccessMetadata(value) {
 }
 var IntercomClient = class extends EventEmitter2 {
   socket = null;
+  scopeId;
   _sessionId = null;
   pendingSends = /* @__PURE__ */ new Map();
   pendingLists = /* @__PURE__ */ new Map();
@@ -1606,6 +1622,10 @@ var IntercomClient = class extends EventEmitter2 {
   _bossBinding;
   disconnecting = false;
   disconnectError = null;
+  constructor(options = {}) {
+    super();
+    this.scopeId = options.scopeId === void 0 ? intercomScopeIdFromEnv(options.env ?? process.env) : parseIntercomScopeId(options.scopeId, "scopeId");
+  }
   failPending(error) {
     for (const pending of this.pendingSends.values()) {
       pending.reject(error);
@@ -1779,6 +1799,7 @@ var IntercomClient = class extends EventEmitter2 {
           session,
           ...!this.remoteAccessCredential && sessionId ? { sessionId } : {},
           ...this.remoteAccessCredential ? { access: this.remoteAccessCredential.access } : {},
+          ...this.scopeId ? { scopeId: this.scopeId } : {},
           ...typeof target === "string" ? {} : { stateId: target.stateId }
         });
       } catch (error) {
@@ -2435,7 +2456,7 @@ async function spawnBrokerIfNeeded(brokerCommand, brokerArgs) {
       return;
     }
     if (await checkBrokerHealth() === "incompatible") {
-      await stopBrokerProcess();
+      throw new Error(`Incompatible live intercom broker; expected ${INTERCOM_PROTOCOL_NAME} v${INTERCOM_PROTOCOL_VERSION}. Stop it explicitly during a coordinated migration.`);
     }
     const brokerPath = getBrokerEntryPath();
     const launch = getBrokerLaunchSpec(brokerPath, brokerCommand, brokerArgs);
@@ -2477,31 +2498,6 @@ async function spawnBrokerIfNeeded(brokerCommand, brokerArgs) {
   } finally {
     releaseSpawnLock();
   }
-}
-async function stopBrokerProcess(pidFile = BROKER_PID, timeoutMs = 3e3) {
-  if (!existsSync4(pidFile)) return;
-  let pid;
-  try {
-    pid = Number.parseInt(readFileSync6(pidFile, "utf-8").trim(), 10);
-  } catch {
-    return;
-  }
-  if (!Number.isSafeInteger(pid) || pid <= 0 || pid === process.pid) return;
-  try {
-    process.kill(pid, "SIGTERM");
-  } catch {
-    return;
-  }
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < timeoutMs) {
-    try {
-      process.kill(pid, 0);
-      await sleep(50);
-    } catch {
-      return;
-    }
-  }
-  throw new Error(`Incompatible intercom broker ${pid} did not stop within ${timeoutMs}ms`);
 }
 async function isBrokerRunning() {
   if (await checkSocketConnectable()) {
@@ -3190,14 +3186,15 @@ function appServerToolResponse(result) {
   };
 }
 var VirtualCodexAgent = class {
-  constructor(agent, app, state, statePath, hooks = {}, options = {}) {
+  constructor(agent, app, state, statePath, hooks = {}, options = {}, scopeId) {
     this.agent = agent;
     this.app = app;
     this.state = state;
     this.statePath = statePath;
     this.hooks = hooks;
     this.threadId = agent.threadId ?? state.agents[agent.id]?.threadId ?? null;
-    this.client = options.client ?? new IntercomClient();
+    this.scopeId = scopeId;
+    this.client = options.client ?? new IntercomClient(scopeId ? { scopeId } : {});
     this.prepareConnection = options.prepareConnection ?? (async () => {
       const config = loadConfig();
       await spawnBrokerIfNeeded(config.brokerCommand, config.brokerArgs);
@@ -3228,6 +3225,7 @@ var VirtualCodexAgent = class {
   intercomStartedAt = Date.now();
   prepareConnection;
   reconnectDelays;
+  scopeId;
   async start() {
     this.reconnectEnabled = true;
     this.client.on("message", (from, message, deliveryId) => {
@@ -3651,9 +3649,10 @@ ${reply.content.text}${formatAttachments(reply.content.attachments)}`, { ok: tru
   }
 };
 var CodexBridgeDaemon = class {
-  constructor(config, hooks = {}) {
+  constructor(config, hooks = {}, scopeId) {
     this.config = config;
     this.hooks = hooks;
+    this.scopeId = scopeId;
     const protectedBossClient = protectedBossClientForBridge(config);
     assertHardenedBossProviderAuthority(protectedBossClient);
     assertHardenedBossBridgeConfig(config);
@@ -3663,6 +3662,7 @@ var CodexBridgeDaemon = class {
   }
   config;
   hooks;
+  scopeId;
   app;
   agents = [];
   inflightToolCalls = /* @__PURE__ */ new Map();
@@ -3683,7 +3683,7 @@ var CodexBridgeDaemon = class {
       }
       for (const agent of this.agents) agent.onNotification(message);
     });
-    this.agents = this.config.agents.map((agent) => new VirtualCodexAgent(agent, this.app, state, this.config.statePath, this.hooks));
+    this.agents = this.config.agents.map((agent) => new VirtualCodexAgent(agent, this.app, state, this.config.statePath, this.hooks, {}, this.scopeId));
     for (const agent of this.agents) await agent.start();
     process.stderr.write(`codex-intercom bridge running ${this.agents.length} virtual agent(s)
 `);

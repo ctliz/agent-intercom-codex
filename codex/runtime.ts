@@ -3,6 +3,7 @@ import { spawnSync } from "child_process";
 import { basename } from "path";
 import { cwd as processCwd } from "process";
 import { IntercomClient } from "../broker/client.ts";
+import { intercomScopeIdFromEnv } from "../protocol-v4/contract.ts";
 import { spawnBrokerIfNeeded } from "../broker/spawn.ts";
 import { getAskTimeoutMs, loadConfig } from "../config.ts";
 import type { Attachment, Message, SessionInfo } from "../types.ts";
@@ -202,7 +203,8 @@ export class CodexIntercomRuntime {
 
   constructor(identity: CodexRuntimeIdentity = buildCodexRuntimeIdentity(), options: CodexIntercomRuntimeOptions = {}) {
     this.identity = identity;
-    this.clientFactory = options.clientFactory ?? (() => new IntercomClient());
+    const initialScopeId = intercomScopeIdFromEnv();
+    this.clientFactory = options.clientFactory ?? (() => new IntercomClient(initialScopeId ? { scopeId: initialScopeId } : {}));
     this.prepareConnection = options.prepareConnection ?? (async () => {
       const config = loadConfig();
       if (!config.enabled) throw new Error("Intercom disabled");
