@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { authorizeSessionAction, visibleSessions } from "./authorization.ts";
 import type { SessionInfo } from "../types.ts";
-import { BOSS_PARTICIPANT_BINDING_VERSION, BOSS_RUN_FEATURE_CONTRACT, type BossParticipantRole } from "@dataforxyz/agent-intercom-core/boss";
+import { BOSS_PARTICIPANT_BINDING_VERSION, BOSS_RUN_FEATURE_CONTRACT, type BossParticipantRole } from "@ctliz/agent-intercom-core/boss";
 
 function local(id: string): SessionInfo {
   return { id, name: id, cwd: "/tmp", model: "test", pid: 1, startedAt: 1, lastActivity: 1, origin: "local" };

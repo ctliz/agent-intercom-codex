@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "description": "Codex MCP plugin and bridge daemon for local Pi/Codex intercom messaging.",
   "author": {
-    "name": "dataforxyz",
+    "name": "ctliz",
     "email": "support@datafor.xyz",
-    "url": "https://github.com/dataforxyz"
+    "url": "https://github.com/ctliz"
   },
   "homepage": "https://github.com/ctliz/agent-intercom-codex",
   "repository": "https://github.com/ctliz/agent-intercom-codex",
@@ -23,7 +23,7 @@
     "displayName": "Codex Intercom",
     "shortDescription": "Coordinate local Codex and Pi sessions",
     "longDescription": "Codex Intercom provides direct 1:1 local messaging for coding-agent sessions through MCP tools, plus an optional Codex app-server bridge that exposes wake-on-message virtual workers backed by persistent app-server threads.",
-    "developerName": "dataforxyz",
+    "developerName": "ctliz",
     "category": "Developer Tools",
     "capabilities": [
       "Interactive"

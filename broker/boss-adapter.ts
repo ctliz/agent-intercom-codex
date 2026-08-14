@@ -28,14 +28,14 @@ import {
   type BrokerCapabilityAdvertisement,
   type FeatureAwareAuthorizationDecision,
   type FeatureAwarePolicyState,
-} from "@dataforxyz/agent-intercom-core/boss";
+} from "@ctliz/agent-intercom-core/boss";
 import {
   ContractValidationError,
   assertExactKeys,
   assertRecord,
   canonicalJson,
-} from "@dataforxyz/agent-intercom-core/canonical";
-import type { PolicyAction } from "@dataforxyz/agent-intercom-core/policy";
+} from "@ctliz/agent-intercom-core/canonical";
+import type { PolicyAction } from "@ctliz/agent-intercom-core/policy";
 import { types as nodeUtilTypes } from "node:util";
 import type {
   BrokerMessage,

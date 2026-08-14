@@ -7,7 +7,7 @@ import {
   parseWorkerIdentityV2,
   workerIdentityFromEnvironment,
   type WorkerIdentityV2,
-} from "@dataforxyz/agent-intercom-core/boss";
+} from "@ctliz/agent-intercom-core/boss";
 
 export interface TeamSession {
   id: string;

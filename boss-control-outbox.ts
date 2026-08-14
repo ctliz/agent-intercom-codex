@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync } from "node:fs";
 import { join } from "node:path";
-import { canonicalHash } from "@dataforxyz/agent-intercom-core/canonical";
-import { parseBossControlEnvelope, type BossControlEnvelope } from "@dataforxyz/agent-intercom-core/boss";
+import { canonicalHash } from "@ctliz/agent-intercom-core/canonical";
+import { parseBossControlEnvelope, type BossControlEnvelope } from "@ctliz/agent-intercom-core/boss";
 import { assertBossCanonicalData } from "./broker/boss-adapter.ts";
 import { ensureIntercomRuntimeDir, getIntercomDirPath, INTERCOM_DIR_MODE, restrictIntercomRuntimeFile } from "./broker/paths.ts";
 import { writeDurableJson } from "./durable-json.ts";

@@ -3,9 +3,9 @@ import { existsSync, readFileSync, renameSync, writeFileSync, unlinkSync } from 
 import { join } from "path";
 import { randomUUID } from "crypto";
 import { types as nodeUtilTypes } from "node:util";
-import { authorize, POLICY_SEMANTICS_HASH, POLICY_SEMANTICS_VERSION, type PolicyAction, type PolicyState } from "@dataforxyz/agent-intercom-core";
-import type { BossAuthorizationContext, BossControlEnvelope, BossPolicyAction } from "@dataforxyz/agent-intercom-core/boss";
-import { canonicalHash } from "@dataforxyz/agent-intercom-core/canonical";
+import { authorize, POLICY_SEMANTICS_HASH, POLICY_SEMANTICS_VERSION, type PolicyAction, type PolicyState } from "@ctliz/agent-intercom-core";
+import type { BossAuthorizationContext, BossControlEnvelope, BossPolicyAction } from "@ctliz/agent-intercom-core/boss";
+import { canonicalHash } from "@ctliz/agent-intercom-core/canonical";
 import { writeMessage, createMessageReader } from "./framing.ts";
 import { parseIntercomScopeId, sameIntercomScope } from "../protocol-v4/contract.ts";
 import {

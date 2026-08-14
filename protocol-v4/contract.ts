@@ -10,7 +10,7 @@ import {
   intercomScopeIdFromEnv,
   parseIntercomScopeId,
   sameIntercomScope,
-} from "@dataforxyz/agent-intercom-core/protocol-v4";
+} from "@ctliz/agent-intercom-core/protocol-v4";
 
 export {
   INTERCOM_PROTOCOL_NAME,

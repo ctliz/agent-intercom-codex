@@ -17,8 +17,8 @@ const common = {
   target: "node22.19",
 };
 const coreExternals = [
-  "@dataforxyz/agent-intercom-core",
-  "@dataforxyz/agent-intercom-core/*",
+  "@ctliz/agent-intercom-core",
+  "@ctliz/agent-intercom-core/*",
 ];
 const outputs = [
   { entry: "codex/server.ts", outfile: "dist/codex-server.mjs", target: "codex-server", executable: true },

@@ -158,15 +158,15 @@ test("built target list omits the unprotected restricted-client bundle", () => {
 
 test("built and packaged surfaces use the exact runtime Core peer without an embedded duplicate", () => {
   const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
-  assert.equal(packageJson.peerDependencies["@dataforxyz/agent-intercom-core"], "0.1.0");
+  assert.equal(packageJson.peerDependencies["@ctliz/agent-intercom-core"], "0.1.0");
   assert.equal(
-    packageJson.devDependencies["@dataforxyz/agent-intercom-core"],
-    "git+https://github.com/ctliz/agent-intercom-core.git#aad1985e125516b318181560293145bf2507cc6d",
+    packageJson.devDependencies["@ctliz/agent-intercom-core"],
+    "git+https://github.com/ctliz/agent-intercom-core.git#37e074970e2a9de32a16fc325607c3b476b0bd45",
   );
 
   for (const name of ["codex-server.mjs", "broker.mjs", "bridge-daemon.mjs", "coi.mjs"]) {
     const built = readFileSync(new URL(`../dist/${name}`, import.meta.url), "utf8");
-    assert.match(built, /from "@dataforxyz\/agent-intercom-core(?:\/[^"]+)?"/);
-    assert.doesNotMatch(built, /node_modules\/@dataforxyz\/agent-intercom-core\//);
+    assert.match(built, /from "@ctliz\/agent-intercom-core(?:\/[^"]+)?"/);
+    assert.doesNotMatch(built, /node_modules\/@ctliz\/agent-intercom-core\//);
   }
 });

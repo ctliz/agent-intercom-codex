@@ -1,12 +1,12 @@
 import { EventEmitter } from "events";
 import net from "net";
 import { randomUUID } from "crypto";
-import { POLICY_SEMANTICS_HASH, POLICY_SEMANTICS_VERSION } from "@dataforxyz/agent-intercom-core";
+import { POLICY_SEMANTICS_HASH, POLICY_SEMANTICS_VERSION } from "@ctliz/agent-intercom-core";
 import {
   BOSS_RUN_FEATURE,
   parseBrokerCapabilityAdvertisement,
   type BossControlEnvelope,
-} from "@dataforxyz/agent-intercom-core/boss";
+} from "@ctliz/agent-intercom-core/boss";
 import { writeMessage, createMessageReader } from "./framing.ts";
 import { intercomScopeIdFromEnv, parseIntercomScopeId } from "../protocol-v4/contract.ts";
 import { PersistentOutboundOutbox } from "../outbound-outbox.ts";

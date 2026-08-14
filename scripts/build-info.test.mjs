@@ -37,12 +37,12 @@ test("runtime source identity is deterministic and excludes test-only changes", 
 
 test("build banner emits a machine-searchable immutable identity before application startup", () => {
   const identity = {
-    packageName: "@dataforxyz/agent-intercom-codex",
+    packageName: "@ctliz/agent-intercom-codex",
     version: "0.10.0",
     target: "coi",
     sourceSha256: "a".repeat(64),
   };
-  assert.equal(buildIdentityLine(identity), `[agent-intercom-build] package=@dataforxyz/agent-intercom-codex version=0.10.0 target=coi sourceSha256=${"a".repeat(64)}`);
+  assert.equal(buildIdentityLine(identity), `[agent-intercom-build] package=@ctliz/agent-intercom-codex version=0.10.0 target=coi sourceSha256=${"a".repeat(64)}`);
   const banner = buildBanner(identity, "#!/usr/bin/env node");
   assert.ok(banner.startsWith("#!/usr/bin/env node\n"));
   assert.match(banner, /target=coi/);

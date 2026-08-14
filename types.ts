@@ -6,7 +6,7 @@ import type {
   BrokerCapabilityAdvertisement,
   ParticipantState,
   WorkerIdentityV2,
-} from "@dataforxyz/agent-intercom-core/boss";
+} from "@ctliz/agent-intercom-core/boss";
 
 export interface BossParticipantRegistrationMetadata {
   featureContract: BossRunFeatureContract;

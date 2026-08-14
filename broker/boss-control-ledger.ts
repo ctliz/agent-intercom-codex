@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, renameSync } from "node:fs";
-import { canonicalJson } from "@dataforxyz/agent-intercom-core/canonical";
+import { canonicalJson } from "@ctliz/agent-intercom-core/canonical";
 import { writeDurableJson } from "../durable-json.ts";
 import { assertBossCanonicalData } from "./boss-adapter.ts";
 import { restrictIntercomRuntimeFile } from "./paths.ts";

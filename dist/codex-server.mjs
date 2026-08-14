@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-process.stderr.write("[agent-intercom-build] package=@dataforxyz/agent-intercom-codex version=0.11.0-connect.1 target=codex-server sourceSha256=06595db44df7c2b5bde69d1ddc1ef05fa18687ce76d74e7ccaa55e7b9e7e9e2d\n");
+process.stderr.write("[agent-intercom-build] package=@ctliz/agent-intercom-codex version=0.11.0-connect.2 target=codex-server sourceSha256=3f81ffd19c83ad2f4db13939ce8dba9eae17d8c4b0c419e405941e0352f9c102\n");
 
 // codex/server.ts
 import readline from "node:readline";
@@ -15,11 +15,11 @@ import { cwd as processCwd } from "process";
 import { EventEmitter } from "events";
 import net from "net";
 import { randomUUID as randomUUID2 } from "crypto";
-import { POLICY_SEMANTICS_HASH, POLICY_SEMANTICS_VERSION } from "@dataforxyz/agent-intercom-core";
+import { POLICY_SEMANTICS_HASH, POLICY_SEMANTICS_VERSION } from "@ctliz/agent-intercom-core";
 import {
   BOSS_RUN_FEATURE as BOSS_RUN_FEATURE2,
   parseBrokerCapabilityAdvertisement as parseBrokerCapabilityAdvertisement2
-} from "@dataforxyz/agent-intercom-core/boss";
+} from "@ctliz/agent-intercom-core/boss";
 
 // broker/framing.ts
 var MAX_FRAME_BYTES = 1024 * 1024;
@@ -98,7 +98,7 @@ import {
   intercomScopeIdFromEnv,
   parseIntercomScopeId,
   sameIntercomScope
-} from "@dataforxyz/agent-intercom-core/protocol-v4";
+} from "@ctliz/agent-intercom-core/protocol-v4";
 
 // outbound-outbox.ts
 import { createHash } from "crypto";
@@ -289,8 +289,8 @@ var PersistentOutboundOutbox = class {
 import { createHash as createHash2 } from "node:crypto";
 import { chmodSync as chmodSync3, existsSync as existsSync2, mkdirSync as mkdirSync3, readFileSync as readFileSync3, renameSync as renameSync3 } from "node:fs";
 import { join as join3 } from "node:path";
-import { canonicalHash } from "@dataforxyz/agent-intercom-core/canonical";
-import { parseBossControlEnvelope as parseBossControlEnvelope2 } from "@dataforxyz/agent-intercom-core/boss";
+import { canonicalHash } from "@ctliz/agent-intercom-core/canonical";
+import { parseBossControlEnvelope as parseBossControlEnvelope2 } from "@ctliz/agent-intercom-core/boss";
 
 // broker/boss-adapter.ts
 import {
@@ -314,13 +314,13 @@ import {
   parseBrokerCapabilityAdvertisement,
   parseParticipantState,
   parseWorkerIdentityV2
-} from "@dataforxyz/agent-intercom-core/boss";
+} from "@ctliz/agent-intercom-core/boss";
 import {
   ContractValidationError,
   assertExactKeys,
   assertRecord,
   canonicalJson
-} from "@dataforxyz/agent-intercom-core/canonical";
+} from "@ctliz/agent-intercom-core/canonical";
 import { types as nodeUtilTypes } from "node:util";
 var BOSS_ADVERTISEMENT_PREDICATES = [
   "protectedProvider",
@@ -785,7 +785,7 @@ function writeRemoteSessionCredential(path, sessionId, metadata) {
 }
 
 // broker/boss-control-ledger.ts
-import { canonicalJson as canonicalJson2 } from "@dataforxyz/agent-intercom-core/canonical";
+import { canonicalJson as canonicalJson2 } from "@ctliz/agent-intercom-core/canonical";
 var BOSS_CONTROL_FAILURE_CODES = /* @__PURE__ */ new Set([
   "INVALID_CONTROL",
   "IDEMPOTENCY_CONFLICT",
@@ -1643,7 +1643,7 @@ import { fileURLToPath } from "url";
 import { createRequire } from "module";
 import net2 from "net";
 import { randomUUID as randomUUID3 } from "crypto";
-import { POLICY_SEMANTICS_HASH as POLICY_SEMANTICS_HASH2, POLICY_SEMANTICS_VERSION as POLICY_SEMANTICS_VERSION2 } from "@dataforxyz/agent-intercom-core";
+import { POLICY_SEMANTICS_HASH as POLICY_SEMANTICS_HASH2, POLICY_SEMANTICS_VERSION as POLICY_SEMANTICS_VERSION2 } from "@ctliz/agent-intercom-core";
 var INTERCOM_DIR = getIntercomDirPath();
 var EXTENSION_DIR = join4(dirname2(fileURLToPath(import.meta.url)), "..");
 var BROKER_PID = join4(INTERCOM_DIR, "broker.pid");
@@ -2088,7 +2088,7 @@ import {
   parseParticipantState as parseParticipantState2,
   parseWorkerIdentityV2 as parseWorkerIdentityV22,
   workerIdentityFromEnvironment
-} from "@dataforxyz/agent-intercom-core/boss";
+} from "@ctliz/agent-intercom-core/boss";
 var LEGACY_LIVE_STATES = /* @__PURE__ */ new Set(["provisioning", "running", "idle", "needs_attention", "stopping"]);
 var CANONICAL_LIVE_STATES = /* @__PURE__ */ new Set(["provisioning", "registering", "ready", "working", "waiting", "paused", "stalled", "blocked", "unreachable"]);
 var stringValue = (value) => typeof value === "string" && value.trim() ? value.trim() : void 0;

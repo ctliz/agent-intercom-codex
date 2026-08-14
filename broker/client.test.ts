@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BOSS_CONTROL_ENVELOPE_VERSION } from "@dataforxyz/agent-intercom-core/boss";
+import { BOSS_CONTROL_ENVELOPE_VERSION } from "@ctliz/agent-intercom-core/boss";
 import { IntercomClient } from "./client.ts";
 import { PersistentBossControlOutbox } from "../boss-control-outbox.ts";
 

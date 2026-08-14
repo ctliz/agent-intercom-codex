@@ -1,6 +1,6 @@
 {
-  "name": "@dataforxyz/agent-intercom-codex",
-  "version": "0.11.0-connect.1",
+  "name": "@ctliz/agent-intercom-codex",
+  "version": "0.11.0-connect.2",
   "description": "Codex MCP plugin for direct local messaging with Pi and Codex coding-agent sessions.",
   "license": "AGPL-3.0-or-later",
   "type": "module",
@@ -63,13 +63,13 @@
     "pi"
   ],
   "peerDependencies": {
-    "@dataforxyz/agent-intercom-core": "0.1.0"
+    "@ctliz/agent-intercom-core": "0.1.0"
   },
   "optionalDependencies": {
     "node-pty": "^1.1.0"
   },
   "devDependencies": {
-    "@dataforxyz/agent-intercom-core": "git+https://github.com/ctliz/agent-intercom-core.git#aad1985e125516b318181560293145bf2507cc6d",
+    "@ctliz/agent-intercom-core": "git+https://github.com/ctliz/agent-intercom-core.git#37e074970e2a9de32a16fc325607c3b476b0bd45",
     "@types/node": "^24.0.0",
     "esbuild": "^0.28.1",
     "tsx": "^4.20.0",

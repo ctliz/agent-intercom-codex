@@ -20,7 +20,7 @@
 
 - **Maintained by `ctliz`**: This distribution is maintained independently by [ctliz](https://github.com/ctliz).
 - **Upstream Heritage**: Agent Intercom grew from [Nico Bailon's original `pi-intercom`](https://github.com/nicobailon/pi-intercom) and the upstream [`dataforxyz/agent-intercom-*`](https://github.com/dataforxyz/agent-intercom-codex) repositories. This project is not officially endorsed by or affiliated with upstream organizations.
-- **Branding & Compatibility**: The **Agent Intercom** branding and `@dataforxyz/*` package namespaces remain unchanged for full ecosystem compatibility across all agent adapters.
+- **Package Namespace**: The canonical npm namespace is `@ctliz/*`. The historical `@dataforxyz/*` namespace was used up to and including `connect.1` and is retained only as provenance and as a migration-detection input; it is never treated as a current or healthy installation. The **Agent Intercom** branding and the `intercom_*` API surface are unchanged.
 
 ## Protocol v4 & Broker-Enforced Scope
 
@@ -97,11 +97,11 @@ For normal use, install the package so the command-line entry points are on
 `PATH`:
 
 ```bash
-git clone --depth 1 --branch v0.11.0-connect.1 https://github.com/ctliz/agent-intercom-codex.git
+git clone --depth 1 --branch v0.11.0-connect.2 https://github.com/ctliz/agent-intercom-codex.git
 cd agent-intercom-codex && npm ci && npm link
 ```
 
-> The public npm package `@dataforxyz/agent-intercom-codex` is **not yet published**. GitHub at the exact connect tag is the only supported install path for this release.
+> The public npm package `@ctliz/agent-intercom-codex` is **not yet published**. GitHub at the exact connect tag is the only supported install path for this release.
 
 This provides:
 
@@ -132,8 +132,8 @@ stable names or IDs.
 To let a Pi manager create Codex workers with owned systemd cgroups, leases, model/effort selection, logs, and verified cleanup, install the companion Pi packages:
 
 ```bash
-pi install git:github.com/ctliz/agent-intercom-pi@v0.11.0-connect.1
-pi install git:github.com/ctliz/agent-intercom-orchestrator@v0.11.0-connect.1
+pi install git:github.com/ctliz/agent-intercom-pi@v0.11.0-connect.2
+pi install git:github.com/ctliz/agent-intercom-orchestrator@v0.11.0-connect.2
 ```
 
 Restart Pi or run `/reload`, then call `agent_fleet({ action: "doctor" })`. The orchestrator invokes the installed `coi` command, or a separately configured minimal wrapper such as `coim`; it does not replace this Codex adapter.
@@ -263,7 +263,7 @@ Every packaged executable writes one machine-searchable identity line to stderr
 before application startup:
 
 ```text
-[agent-intercom-build] package=@dataforxyz/agent-intercom-codex version=0.10.0 target=coi sourceSha256=<64-hex-source-identity>
+[agent-intercom-build] package=@ctliz/agent-intercom-codex version=0.11.0-connect.2 target=coi sourceSha256=<64-hex-source-identity>
 ```
 
 `dist/build-info.json` records the same deterministic runtime-source identity.
@@ -533,10 +533,11 @@ Releases are skipped safely when a workflow is rerun.
 
 ## Compatibility, Migration & Rollback
 
-- **Single Shared Broker**: All adapters on the machine connect to one local broker over a Unix domain socket (`~/.pi/agent/intercom/broker.sock` or `$PI_CODING_AGENT_DIR/intercom/broker.sock`).
-- **All-or-Nothing Family Upgrade**: Protocol v4 is a family-wide change. Every adapter on the machine (`pi`, `claude`, `codex`, `opencode`, `orchestrator`) must be upgraded together in the same maintenance window. A partially upgraded machine is not a supported configuration.
+- **Single Shared Broker**: The broker-capable adapters on the machine — `pi`, `claude`, `codex`, and `opencode` — connect to one local broker over a Unix domain socket (`~/.pi/agent/intercom/broker.sock` or `$PI_CODING_AGENT_DIR/intercom/broker.sock`).
+- **Coordinated Upgrade Set**: Protocol v4 changes broker negotiation, so the broker-capable adapters that are *actually installed and enabled on this machine* must be upgraded together in one maintenance window. Adapters you do not use do not need to be installed to satisfy the upgrade. `@ctliz/agent-intercom-core` is an internal dependency that arrives with the adapters and is never installed or upgraded on its own.
+- **Orchestrator is Optional**: `agent-intercom-orchestrator` is an optional Linux/systemd lifecycle component. It does not implement or start a Broker and is not part of the Broker compatibility set. Omitting it — for example on macOS, or when using TmuxDeck — is a fully supported configuration and is **not** a mixed or unsupported state. If it is installed on a supported Linux host, or on WSL with a systemd user manager enabled, update it together with the adapters it manages.
 - **Fail-Closed Legacy Handling**: An incompatible legacy (v3) broker or client fails closed. It is rejected at negotiation and never killed, never downgraded, and never allowed to form a second broker island.
-- **Family Rollback (all-or-nothing)**: Rolling back is family-wide. Restore the exact specs and lockfiles you backed up before the upgrade, for every adapter together, then reload all active agent sessions. There is no published pre-v4 tag under `ctliz` to roll back to, so a pre-upgrade backup of the exact installed specs/locks is the supported rollback material. Rolling back only one adapter leaves the family in an unsupported mixed state.
+- **Rollback**: Rolling back covers only the components that were actually installed on this machine before the upgrade. Restore the exact specs and lockfiles you backed up, then reload the affected agent sessions. Roll Orchestrator back only if it was installed to begin with. There is no published pre-v4 tag under `ctliz`, so a pre-upgrade backup of the exact installed specs/locks is the supported rollback material. Leaving some installed broker-capable adapters on the old protocol while others are upgraded is an unsupported mixed state.
 
 ## License
 
@@ -550,3 +551,22 @@ their original notices. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and
 [licenses/MIT-pi-intercom.txt](licenses/MIT-pi-intercom.txt). Versions already
 published under MIT remain available under their original terms. See
 [LICENSE_TRANSITION.md](LICENSE_TRANSITION.md) for the exact commit and tag boundary.
+
+## Upgrading from `connect.1` to `connect.2`
+
+`connect.2` renames the package namespace from `@dataforxyz/*` to `@ctliz/*`. The two namespaces are different packages to npm. Pi Git package installations deduplicate by repository URL without ref, but running agent sessions continue to execute legacy code in memory, and npm or global installs along with binary links can coexist and conflict. Operators must stop active sessions, clean active install surfaces, and follow remove-before-install — side-by-side installation is not supported.
+
+1. Back up the exact specs, lock files, and settings of every installed component.
+2. Stop or close the installed broker-capable adapters.
+3. Remove the old `@dataforxyz/*` specs, packages, and binary links that are actually installed.
+4. Assert the old identity is gone from the **active install surfaces of the current OS user**: Pi settings and extension specs, resolved managed install roots, actual `node_modules` installations, and conflicting binary links that the current `PATH` would resolve. Do not scan or delete unrelated source checkouts, historical documentation, or other users' files — a `@dataforxyz/*` string in an unrelated development clone is not an installation.
+5. Install the `@ctliz/*` `connect.2` exact tags for the components you actually use (v0.11.0-connect.2).
+6. Reload or restart, then verify exactly one broker is running.
+
+**Classification rule.** Migration-aware `connect.2` setup and update tooling must classify an old-namespace-only install surface as `MIGRATION_REQUIRED`, and the simultaneous presence of both namespaces as a duplicate/dual-load hard error that refuses setup, update, and further installation. This tooling does not exist for every platform and adapter combination; where it is not available, apply the same two rules manually against the surfaces in step 4. Do not assume every adapter emits this code automatically.
+
+**Rollback** reverses this and covers only the components that were installed on this machine before the upgrade: remove the `@ctliz/*` packages, then restore the backed-up exact `@dataforxyz/*` specs and locks. Roll Orchestrator back only if it was installed to begin with.
+
+The `connect.1` tags, source commits, and published release assets are immutable and are not modified by this migration. Release notes may carry an explicit erratum, which corrects the description only and never moves a tag or replaces an asset.
+
+These packages are not published on the npm registry yet; install from the GitHub tags shown above.

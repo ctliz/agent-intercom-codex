@@ -1,4 +1,4 @@
-process.stderr.write("[agent-intercom-build] package=@dataforxyz/agent-intercom-codex version=0.11.0-connect.1 target=broker sourceSha256=06595db44df7c2b5bde69d1ddc1ef05fa18687ce76d74e7ccaa55e7b9e7e9e2d\n");
+process.stderr.write("[agent-intercom-build] package=@ctliz/agent-intercom-codex version=0.11.0-connect.2 target=broker sourceSha256=3f81ffd19c83ad2f4db13939ce8dba9eae17d8c4b0c419e405941e0352f9c102\n");
 
 // broker/broker.ts
 import net from "net";
@@ -6,8 +6,8 @@ import { existsSync as existsSync3, readFileSync as readFileSync5, renameSync as
 import { join as join2 } from "path";
 import { randomUUID as randomUUID3 } from "crypto";
 import { types as nodeUtilTypes2 } from "node:util";
-import { authorize, POLICY_SEMANTICS_HASH, POLICY_SEMANTICS_VERSION } from "@dataforxyz/agent-intercom-core";
-import { canonicalHash } from "@dataforxyz/agent-intercom-core/canonical";
+import { authorize, POLICY_SEMANTICS_HASH, POLICY_SEMANTICS_VERSION } from "@ctliz/agent-intercom-core";
+import { canonicalHash } from "@ctliz/agent-intercom-core/canonical";
 
 // broker/framing.ts
 var MAX_FRAME_BYTES = 1024 * 1024;
@@ -86,7 +86,7 @@ import {
   intercomScopeIdFromEnv,
   parseIntercomScopeId,
   sameIntercomScope
-} from "@dataforxyz/agent-intercom-core/protocol-v4";
+} from "@ctliz/agent-intercom-core/protocol-v4";
 
 // broker/paths.ts
 import { chmodSync, mkdirSync, readFileSync } from "fs";
@@ -638,13 +638,13 @@ import {
   parseBrokerCapabilityAdvertisement,
   parseParticipantState,
   parseWorkerIdentityV2
-} from "@dataforxyz/agent-intercom-core/boss";
+} from "@ctliz/agent-intercom-core/boss";
 import {
   ContractValidationError,
   assertExactKeys,
   assertRecord,
   canonicalJson
-} from "@dataforxyz/agent-intercom-core/canonical";
+} from "@ctliz/agent-intercom-core/canonical";
 import { types as nodeUtilTypes } from "node:util";
 var BOSS_ADVERTISEMENT_PREDICATES = [
   "protectedProvider",
@@ -1031,7 +1031,7 @@ var BrokerAuditLog = class {
 
 // broker/boss-control-ledger.ts
 import { existsSync as existsSync2, readFileSync as readFileSync4, renameSync as renameSync2 } from "node:fs";
-import { canonicalJson as canonicalJson2 } from "@dataforxyz/agent-intercom-core/canonical";
+import { canonicalJson as canonicalJson2 } from "@ctliz/agent-intercom-core/canonical";
 var BOSS_CONTROL_LEDGER_VERSION = 3;
 var EXPIRING_BOSS_CONTROL_LEDGER_VERSION = 2;
 var MAX_BOSS_CONTROL_RESULTS = 2048;

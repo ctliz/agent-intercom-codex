@@ -5,7 +5,7 @@ import {
   BOSS_PARTICIPANT_CREDENTIAL_VERSION,
   BOSS_RUN_FEATURE_CONTRACT,
   INTERCOM_BASE_PROTOCOL_VERSION,
-} from "@dataforxyz/agent-intercom-core/boss";
+} from "@ctliz/agent-intercom-core/boss";
 import {
   bossCapabilityAdvertisement,
   hasAuthoritativeBossControlCorrelation,

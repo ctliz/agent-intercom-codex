@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import test from "node:test";
-import { BOSS_CONTROL_ENVELOPE_VERSION } from "@dataforxyz/agent-intercom-core/boss";
+import { BOSS_CONTROL_ENVELOPE_VERSION } from "@ctliz/agent-intercom-core/boss";
 import { PersistentBossControlOutbox } from "./boss-control-outbox.ts";
 
 const envelope = {

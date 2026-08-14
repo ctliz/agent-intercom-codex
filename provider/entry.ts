@@ -11,7 +11,7 @@ const supportedBossFeature = Object.freeze({
 export const CODEX_BOSS_PROTECTED_PROVIDER_BUILD_IDENTITY = Object.freeze({
   contractVersion: "codex.boss-protected-provider.v1",
   adapterId: "codex",
-  providerPackage: "@dataforxyz/agent-intercom-codex",
+  providerPackage: "@ctliz/agent-intercom-codex",
   supportedBaseProtocolVersions: Object.freeze([4]),
   supportedFeatures: Object.freeze([supportedBossFeature]),
   protocolFeatureContractHash: "dae30efe2c48d2de0fe72a7ebdfd107d3feaefc180d42056ba05df6088a94364",
