@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-process.stderr.write("[agent-intercom-build] package=@ctliz/agent-intercom-codex version=0.11.0-connect.2 target=bridge-daemon sourceSha256=3f81ffd19c83ad2f4db13939ce8dba9eae17d8c4b0c419e405941e0352f9c102\n");
+process.stderr.write("[agent-intercom-build] package=@ctliz/agent-intercom-codex version=0.12.0-connect.1 target=bridge-daemon sourceSha256=f5d619a0fa1debe9fa5b5850ec8d372a474488d0fb4bde6540cd7656f6bb2c51\n");
 
 // codex/bridge-daemon.ts
 import { once } from "node:events";
@@ -2808,6 +2808,7 @@ import {
   parseWorkerIdentityV2 as parseWorkerIdentityV22,
   workerIdentityFromEnvironment
 } from "@ctliz/agent-intercom-core/boss";
+import { readTeamManifestAsync, TeamManifestError } from "@ctliz/agent-intercom-core/team-manifest";
 var LEGACY_LIVE_STATES = /* @__PURE__ */ new Set(["provisioning", "running", "idle", "needs_attention", "stopping"]);
 var CANONICAL_LIVE_STATES = /* @__PURE__ */ new Set(["provisioning", "registering", "ready", "working", "waiting", "paused", "stalled", "blocked", "unreachable"]);
 var stringValue = (value) => typeof value === "string" && value.trim() ? value.trim() : void 0;
@@ -2815,12 +2816,25 @@ var connectedTo = (sessions, target) => {
   const normalized = target.toLowerCase();
   return sessions.some((session) => session.id === target || session.name?.toLowerCase() === normalized);
 };
+function hasBossEnvironmentKeys(env) {
+  const bossKeys = [
+    "AGENT_INTERCOM_BOSS_RUN_ID",
+    "AGENT_INTERCOM_PARTICIPANT_ID",
+    "AGENT_INTERCOM_BINDING_EPOCH",
+    "AGENT_INTERCOM_WORKER_INCARNATION_ID",
+    "AGENT_INTERCOM_WORKER_GENERATION"
+  ];
+  return bossKeys.some((key) => env[key] !== void 0);
+}
 function bossIdentityFromEnvironment(env) {
-  const bossKeys = ["AGENT_INTERCOM_BOSS_RUN_ID", "AGENT_INTERCOM_PARTICIPANT_ID", "AGENT_INTERCOM_BINDING_EPOCH"];
-  if (!bossKeys.some((key) => env[key] !== void 0)) return void 0;
-  const identity = workerIdentityFromEnvironment(env);
-  if (!("bossRunId" in identity)) throw new Error("Incomplete Boss worker identity cannot discover a team");
-  return identity;
+  if (!hasBossEnvironmentKeys(env)) return void 0;
+  try {
+    const identity = workerIdentityFromEnvironment(env);
+    if (!("bossRunId" in identity)) return void 0;
+    return identity;
+  } catch {
+    return void 0;
+  }
 }
 function canonicalWorker(value) {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("worker must be an object");
@@ -2874,25 +2888,138 @@ async function readWorkers(agentDir) {
     return { version: 1, workers: [] };
   }
 }
+async function resolveNonAuthoritativeTeam(input, env) {
+  if (env.AGENT_INTERCOM_TEAM_MANIFEST !== void 0) {
+    const rawPath = env.AGENT_INTERCOM_TEAM_MANIFEST.trim();
+    if (!rawPath) {
+      throw new TeamManifestError("ERR_TEAM_MANIFEST_INVALID");
+    }
+    const manifest = await readTeamManifestAsync(rawPath);
+    if (!manifest) {
+      throw new TeamManifestError("ERR_TEAM_MANIFEST_INVALID");
+    }
+    const selfMember = manifest.members.find((m) => m.sessionId === input.selfId);
+    if (!selfMember) {
+      throw new TeamManifestError("ERR_TEAM_MANIFEST_INVALID");
+    }
+    const isManager = input.selfId === manifest.leadId;
+    const managerTarget2 = manifest.leadId;
+    const managerConnected = connectedTo(input.sessions, managerTarget2);
+    const coworkers = manifest.members.filter((m) => m.sessionId !== input.selfId).filter((m) => isManager || m.sessionId !== managerTarget2).map((m) => {
+      const live = input.sessions.find((s) => s.id === m.sessionId || s.name === m.sessionId);
+      return {
+        id: m.sessionId,
+        target: m.sessionId,
+        role: m.role,
+        connected: Boolean(live)
+      };
+    });
+    return {
+      teamId: manifest.runId,
+      self: { id: input.selfId, isManager },
+      manager: { target: managerTarget2, connected: managerConnected },
+      coworkers,
+      source: "manifest"
+    };
+  }
+  if (stringValue(env.AGENT_INTERCOM_SCOPE_ID)) {
+    const managerTarget2 = stringValue(env.AGENT_INTERCOM_MANAGER_TARGET) ?? stringValue(env.AGENT_INTERCOM_MANAGER_SESSION_ID);
+    const role = stringValue(env.AGENT_INTERCOM_ROLE)?.toLowerCase();
+    const isManager = role === "manager" || managerTarget2 !== void 0 && managerTarget2 === input.selfId || managerTarget2 === void 0 && role !== "worker";
+    const effectiveManagerTarget = isManager ? input.selfId : managerTarget2;
+    const coworkers = input.sessions.filter((session) => session.id !== input.selfId).filter((session) => session.model !== "human").filter((session) => session.id !== effectiveManagerTarget).map((session) => ({
+      id: session.id,
+      target: session.id,
+      ...session.model ? { harness: session.model } : {},
+      connected: true
+    }));
+    const manager = effectiveManagerTarget ? {
+      target: effectiveManagerTarget,
+      connected: isManager ? true : connectedTo(input.sessions, effectiveManagerTarget)
+    } : void 0;
+    return {
+      teamId: effectiveManagerTarget ?? input.selfId,
+      self: { id: input.selfId, isManager },
+      ...manager ? { manager } : {},
+      coworkers,
+      source: "live"
+    };
+  }
+  const managerTarget = stringValue(env.AGENT_INTERCOM_MANAGER_TARGET) ?? stringValue(env.AGENT_INTERCOM_MANAGER_SESSION_ID);
+  return {
+    teamId: managerTarget ?? input.selfId,
+    self: { id: input.selfId, isManager: !managerTarget },
+    manager: managerTarget ? { target: managerTarget, connected: connectedTo(input.sessions, managerTarget) } : { target: input.selfId, connected: true },
+    coworkers: [],
+    source: "standalone"
+  };
+}
 async function resolveIntercomTeam(input) {
   const env = input.env ?? process.env;
   const snapshot = await readWorkers(input.agentDir ?? getAgentDirPath());
   const workers = snapshot.workers;
   const workerId = stringValue(env.AGENT_INTERCOM_WORKER_ID);
+  const selfSession = input.sessions.find((session) => session.id === input.selfId);
+  const isBossContext = selfSession?.boss !== void 0 || hasBossEnvironmentKeys(env);
   const bossIdentity = bossIdentityFromEnvironment(env);
   const runId = stringValue(env.AGENT_INTERCOM_RUN_ID);
-  const currentMatches = workerId ? workers.filter((worker) => stringValue(worker.id) === workerId && (bossIdentity === void 0 ? !runId || stringValue(worker.runId) === runId : snapshot.version === 2 && worker.canonicalIdentity?.workerId === bossIdentity.workerId && worker.canonicalIdentity.workerIncarnationId === bossIdentity.workerIncarnationId && worker.canonicalIdentity.workerGeneration === bossIdentity.workerGeneration && "bossRunId" in worker.canonicalIdentity && "bossRunId" in bossIdentity && worker.canonicalIdentity.bossRunId === bossIdentity.bossRunId && worker.canonicalIdentity.participantId === bossIdentity.participantId && worker.canonicalIdentity.bindingEpoch === bossIdentity.bindingEpoch)) : [];
+  if (isBossContext && bossIdentity === void 0) {
+    return {
+      self: { id: input.selfId, ...workerId ? { workerId } : {}, isManager: false },
+      coworkers: [],
+      source: "boss"
+    };
+  }
+  const currentMatches = workerId ? workers.filter((worker) => stringValue(worker.id) === workerId && (bossIdentity === void 0 ? snapshot.version === 1 && (!runId || stringValue(worker.runId) === runId) : snapshot.version === 2 && worker.canonicalIdentity?.workerId === bossIdentity.workerId && worker.canonicalIdentity.workerIncarnationId === bossIdentity.workerIncarnationId && worker.canonicalIdentity.workerGeneration === bossIdentity.workerGeneration && "bossRunId" in worker.canonicalIdentity && "bossRunId" in bossIdentity && worker.canonicalIdentity.bossRunId === bossIdentity.bossRunId && worker.canonicalIdentity.participantId === bossIdentity.participantId && worker.canonicalIdentity.bindingEpoch === bossIdentity.bindingEpoch)) : [];
   const current = bossIdentity === void 0 ? currentMatches[0] : currentMatches.length === 1 ? currentMatches[0] : void 0;
   const currentTarget = stringValue(current?.intercomTarget);
   const exactCurrentProjection = current !== void 0 && currentTarget === input.selfId && workers.filter((worker) => stringValue(worker.id) === workerId).length === 1 && workers.filter((worker) => stringValue(worker.intercomTarget) === currentTarget).length === 1 && exactBossRosterSession(input.sessions, current) !== void 0;
   if (bossIdentity !== void 0 && !exactCurrentProjection) {
-    return { self: { id: input.selfId, ...workerId ? { workerId } : {}, isManager: false }, coworkers: [] };
+    return { self: { id: input.selfId, ...workerId ? { workerId } : {}, isManager: false }, coworkers: [], source: "boss" };
   }
-  const managerTarget = stringValue(current?.managerSessionId) ?? (bossIdentity === void 0 ? stringValue(env.AGENT_INTERCOM_MANAGER_TARGET) ?? stringValue(env.AGENT_INTERCOM_MANAGER_SESSION_ID) : void 0);
-  const teamId = managerTarget ?? input.selfId;
+  if (bossIdentity === void 0 && !current) {
+    if (workerId === void 0 && snapshot.version === 1) {
+      const ownedCoworkers = workers.filter((worker) => worker.owned === true).filter((worker) => {
+        const mgr = stringValue(worker.managerSessionId);
+        return mgr !== void 0 && mgr === input.selfId;
+      }).filter((worker) => LEGACY_LIVE_STATES.has(stringValue(worker.state) ?? "")).filter((worker) => stringValue(worker.id) !== input.selfId).map((worker) => {
+        const id = stringValue(worker.id);
+        if (!id) return void 0;
+        const target = stringValue(worker.intercomTarget) ?? id;
+        return {
+          id,
+          target,
+          ...stringValue(worker.harness) ? { harness: stringValue(worker.harness) } : {},
+          ...stringValue(worker.role) ? { role: stringValue(worker.role) } : {},
+          ...stringValue(worker.state) ? { state: stringValue(worker.state) } : {},
+          connected: connectedTo(input.sessions, target)
+        };
+      }).filter((member) => Boolean(member));
+      if (ownedCoworkers.length > 0) {
+        return {
+          teamId: input.selfId,
+          self: { id: input.selfId, isManager: true },
+          manager: { target: input.selfId, connected: true },
+          coworkers: ownedCoworkers,
+          source: "orchestrator"
+        };
+      }
+    }
+    return resolveNonAuthoritativeTeam(input, env);
+  }
   const currentRole = stringValue(current?.role);
+  const selfIsManager = bossIdentity !== void 0 ? currentRole === "manager" : void 0;
+  const managerTarget = bossIdentity !== void 0 ? selfIsManager ? input.selfId : stringValue(current?.managerSessionId) : stringValue(current?.managerSessionId) ?? stringValue(env.AGENT_INTERCOM_MANAGER_TARGET) ?? stringValue(env.AGENT_INTERCOM_MANAGER_SESSION_ID);
+  if (bossIdentity === void 0 && !managerTarget) {
+    return {
+      self: { id: input.selfId, ...workerId ? { workerId } : {}, isManager: false },
+      coworkers: [],
+      source: "orchestrator"
+    };
+  }
+  const teamId = bossIdentity !== void 0 ? "bossRunId" in bossIdentity ? bossIdentity.bossRunId : managerTarget ?? input.selfId : managerTarget ?? input.selfId;
   const canDiscoverOwnedRoster = bossIdentity === void 0 || currentRole === "manager" || currentRole === "controller";
-  const coworkers = (canDiscoverOwnedRoster ? workers : []).filter((worker) => worker.owned === true).filter((worker) => bossIdentity === void 0 || snapshot.version === 2 && worker.canonicalIdentity !== void 0 && "bossRunId" in worker.canonicalIdentity && "bossRunId" in bossIdentity && worker.canonicalIdentity.bossRunId === bossIdentity.bossRunId).filter((worker) => stringValue(worker.managerSessionId) === teamId).filter((worker) => stringValue(worker.intercomTarget) !== managerTarget).filter((worker) => (snapshot.version === 2 ? CANONICAL_LIVE_STATES : LEGACY_LIVE_STATES).has(stringValue(worker.state) ?? "")).filter((worker) => stringValue(worker.id) !== workerId).map((worker) => {
+  const coworkers = (canDiscoverOwnedRoster ? workers : []).filter((worker) => worker.owned === true).filter((worker) => bossIdentity === void 0 || snapshot.version === 2 && worker.canonicalIdentity !== void 0 && "bossRunId" in worker.canonicalIdentity && "bossRunId" in bossIdentity && worker.canonicalIdentity.bossRunId === bossIdentity.bossRunId).filter((worker) => stringValue(worker.managerSessionId) === (bossIdentity !== void 0 ? managerTarget : teamId)).filter((worker) => stringValue(worker.intercomTarget) !== managerTarget).filter((worker) => (snapshot.version === 2 ? CANONICAL_LIVE_STATES : LEGACY_LIVE_STATES).has(stringValue(worker.state) ?? "")).filter((worker) => stringValue(worker.id) !== workerId && stringValue(worker.id) !== input.selfId).map((worker) => {
     const id = stringValue(worker.id);
     if (!id) return void 0;
     const target = stringValue(worker.intercomTarget) ?? id;
@@ -2909,11 +3036,13 @@ async function resolveIntercomTeam(input) {
   }).filter((member) => Boolean(member));
   const managerWorker = managerTarget === void 0 ? void 0 : workers.find((worker) => stringValue(worker.intercomTarget) === managerTarget && (bossIdentity === void 0 || snapshot.version === 2 && stringValue(worker.role) === "manager" && worker.canonicalIdentity !== void 0 && "bossRunId" in worker.canonicalIdentity && "bossRunId" in bossIdentity && worker.canonicalIdentity.bossRunId === bossIdentity.bossRunId));
   const managerConnected = managerTarget === void 0 ? true : bossIdentity === void 0 ? connectedTo(input.sessions, managerTarget) : managerWorker !== void 0 && exactBossRosterSession(input.sessions, managerWorker) !== void 0;
+  const isManager = bossIdentity !== void 0 ? selfIsManager : false;
   return {
     teamId,
-    self: { id: input.selfId, ...workerId ? { workerId } : {}, isManager: bossIdentity === void 0 && !managerTarget },
-    ...managerTarget ? { manager: { target: managerTarget, connected: managerConnected } } : bossIdentity === void 0 ? { manager: { target: input.selfId, connected: true } } : {},
-    coworkers
+    self: { id: input.selfId, ...workerId ? { workerId } : {}, isManager },
+    ...managerTarget ? { manager: { target: managerTarget, connected: isManager ? true : managerConnected } } : {},
+    coworkers,
+    source: bossIdentity !== void 0 ? "boss" : "orchestrator"
   };
 }
 function formatIntercomTeam(team) {
