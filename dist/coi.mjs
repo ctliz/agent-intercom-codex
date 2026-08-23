@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-process.stderr.write("[agent-intercom-build] package=@ctliz/agent-intercom-codex version=0.12.0-connect.1 target=coi sourceSha256=f5d619a0fa1debe9fa5b5850ec8d372a474488d0fb4bde6540cd7656f6bb2c51\n");
+process.stderr.write("[agent-intercom-build] package=@ctliz/agent-intercom-codex version=0.12.0-connect.2 target=coi sourceSha256=618efd98d8b0f52e066dbc535b3d8f61e7221d9f6c40cb2a3a1da690cbcae849\n");
 
 // codex/coi.ts
 import { once as once2 } from "node:events";
@@ -104,7 +104,8 @@ var CodexAppServerClient = class extends EventEmitter {
       const started = spawnSync(this.options.startDaemonCommand, this.options.startDaemonArgs, {
         encoding: "utf8",
         env: this.options.env,
-        stdio: ["ignore", "pipe", "pipe"]
+        stdio: ["ignore", "pipe", "pipe"],
+        shell: false
       });
       if (started.status !== 0) {
         throw new Error(`Failed to start Codex app-server daemon: ${started.stderr || started.stdout || `exit ${started.status}`}`);
@@ -117,7 +118,8 @@ var CodexAppServerClient = class extends EventEmitter {
     }
     const proc = spawn(this.options.command, this.options.args, {
       stdio: ["pipe", "pipe", "pipe"],
-      env: this.options.env
+      env: this.options.env,
+      shell: false
     });
     this.proc = proc;
     this.rl = readline.createInterface({ input: proc.stdout, crlfDelay: Infinity });
@@ -2444,7 +2446,8 @@ function getBrokerSpawnOptions(extensionDir = EXTENSION_DIR, env = process.env) 
     stdio: "ignore",
     cwd: extensionDir,
     env: { ...env, PI_CODING_AGENT_DIR: getAgentDirPath(env), NODE_NO_WARNINGS: "1" },
-    windowsHide: true
+    windowsHide: true,
+    shell: false
   };
 }
 function toError2(error) {
@@ -3931,7 +3934,7 @@ function runDetachedClipboardCommand(command, args, text, env, timeoutMs) {
     };
     const timeout = setTimeout(() => finish({ ok: false, error: `${command} did not start within ${timeoutMs}ms` }), timeoutMs);
     try {
-      const proc = spawn3(command, args, { env, stdio: ["pipe", "ignore", "ignore"] });
+      const proc = spawn3(command, args, { env, stdio: ["pipe", "ignore", "ignore"], shell: false });
       proc.once("error", (error) => finish({ ok: false, error: error.message }));
       proc.once("spawn", () => {
         proc.stdin.on("error", () => {
@@ -3962,7 +3965,7 @@ function runClipboardCommand(command, args, text, env, timeoutMs) {
     }, timeoutMs);
     let proc;
     try {
-      proc = spawn3(command, args, { env, stdio: ["pipe", "ignore", "pipe"] });
+      proc = spawn3(command, args, { env, stdio: ["pipe", "ignore", "pipe"], shell: false });
       proc.stderr?.setEncoding("utf8");
       proc.stderr?.on("data", (chunk) => {
         if (stderr.length < 4096) stderr += chunk;
@@ -4195,7 +4198,8 @@ function gitString(cwd, args) {
   const result = spawnSync2("git", args, {
     cwd,
     encoding: "utf8",
-    stdio: ["ignore", "pipe", "ignore"]
+    stdio: ["ignore", "pipe", "ignore"],
+    shell: false
   });
   if (result.status !== 0) return null;
   const trimmed = result.stdout.trim();
@@ -4526,7 +4530,7 @@ function terminalNotification(message) {
 async function runInteractiveTui(command, args, refreshArgs, cwd, onAltI, onAltM, installRefresh, protectedBossClient, launchEnv = process.env) {
   assertHardenedBossProviderAuthority(protectedBossClient);
   const runInherited = async () => {
-    const tui2 = spawn4(command, args, { cwd, env: launchEnv, stdio: "inherit" });
+    const tui2 = spawn4(command, args, { cwd, env: launchEnv, stdio: "inherit", shell: false });
     const [code, signal] = await once2(tui2, "exit");
     if (typeof code === "number") return code;
     return signal === "SIGINT" ? 130 : 1;
@@ -4646,7 +4650,8 @@ async function runCoi(options, env = process.env) {
     const help = spawn4(options.codexCommand, options.codexArgs, {
       cwd: options.cwd,
       env,
-      stdio: "inherit"
+      stdio: "inherit",
+      shell: false
     });
     const [code, signal] = await once2(help, "exit");
     if (typeof code === "number") return code;
@@ -4678,7 +4683,8 @@ async function runCoi(options, env = process.env) {
   const appServer = spawn4(options.codexCommand, buildCodexAppServerArgs(options.codexArgs, socketPath, env), {
     cwd: options.cwd,
     env,
-    stdio: ["ignore", "ignore", "pipe"]
+    stdio: ["ignore", "ignore", "pipe"],
+    shell: false
   });
   appServer.stderr?.on("data", (chunk) => {
     if (env.CODEX_INTERCOM_DEBUG) process.stderr.write(String(chunk));

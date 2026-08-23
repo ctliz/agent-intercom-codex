@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-process.stderr.write("[agent-intercom-build] package=@ctliz/agent-intercom-codex version=0.12.0-connect.1 target=codex-server sourceSha256=f5d619a0fa1debe9fa5b5850ec8d372a474488d0fb4bde6540cd7656f6bb2c51\n");
+process.stderr.write("[agent-intercom-build] package=@ctliz/agent-intercom-codex version=0.12.0-connect.2 target=codex-server sourceSha256=618efd98d8b0f52e066dbc535b3d8f61e7221d9f6c40cb2a3a1da690cbcae849\n");
 
 // codex/server.ts
 import readline from "node:readline";
@@ -1738,7 +1738,8 @@ function getBrokerSpawnOptions(extensionDir = EXTENSION_DIR, env = process.env) 
     stdio: "ignore",
     cwd: extensionDir,
     env: { ...env, PI_CODING_AGENT_DIR: getAgentDirPath(env), NODE_NO_WARNINGS: "1" },
-    windowsHide: true
+    windowsHide: true,
+    shell: false
   };
 }
 function toError2(error2) {
@@ -2472,7 +2473,8 @@ function detectGitRoot(cwd) {
   const result = spawnSync("git", ["rev-parse", "--show-toplevel"], {
     cwd,
     encoding: "utf8",
-    stdio: ["ignore", "pipe", "ignore"]
+    stdio: ["ignore", "pipe", "ignore"],
+    shell: false
   });
   if (result.status !== 0) return null;
   return result.stdout.trim() || null;
@@ -2815,18 +2817,21 @@ function buildToolDefinitions(runtime2) {
       name: "intercom_whoami",
       description: "Return this Codex session's intercom identity for reliable targeting.",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       handler: async () => runtime2.whoami()
     },
     {
       name: "intercom_team",
       description: "Show your current manager and the live coworkers owned by that manager. No arguments are required.",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
       handler: async () => runtime2.team()
     },
     {
       name: "intercom_status",
       description: "Show intercom connection status, active sessions, unread messages, and pending asks.",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
       handler: async () => runtime2.status()
     },
     {
@@ -2840,6 +2845,7 @@ function buildToolDefinitions(runtime2) {
         },
         additionalProperties: false
       },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
       handler: async (args) => runtime2.list(
         args.scope === "directory" || args.scope === "repo" ? args.scope : "machine",
         asBoolean(args.include_self, false)
@@ -2854,6 +2860,7 @@ function buildToolDefinitions(runtime2) {
         required: ["summary"],
         additionalProperties: false
       },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
       handler: async (args) => runtime2.setSummary(asString(args.summary, "summary"))
     },
     {
@@ -2869,6 +2876,7 @@ function buildToolDefinitions(runtime2) {
         required: ["to", "message"],
         additionalProperties: false
       },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
       handler: async (args) => runtime2.send(asString(args.to, "to"), asString(args.message, "message"), asAttachmentArray(args.attachments))
     },
     {
@@ -2885,6 +2893,7 @@ function buildToolDefinitions(runtime2) {
         required: ["to", "message"],
         additionalProperties: false
       },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
       handler: async (args, signal) => runtime2.ask(
         asString(args.to, "to"),
         asString(args.message, "message"),
@@ -2901,6 +2910,7 @@ function buildToolDefinitions(runtime2) {
         properties: { mark_read: { type: "boolean", default: false } },
         additionalProperties: false
       },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
       handler: async (args) => runtime2.pending(asBoolean(args.mark_read, false))
     },
     {
@@ -2916,6 +2926,7 @@ function buildToolDefinitions(runtime2) {
         required: ["message"],
         additionalProperties: false
       },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
       handler: async (args) => runtime2.reply(asString(args.message, "message"), typeof args.to === "string" ? args.to : void 0, args.which === "oldest" || args.which === "latest" ? args.which : void 0)
     }
   ];
@@ -2952,7 +2963,7 @@ async function handleMcpRequest(request, runtime2) {
       return ok(request.id, {});
     case "tools/list":
       return ok(request.id, {
-        tools: tools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema }))
+        tools: tools.map(({ name, description, inputSchema, annotations }) => ({ name, description, inputSchema, annotations }))
       });
     case "tools/call": {
       const name = request.params?.name;

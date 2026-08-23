@@ -109,6 +109,7 @@ export class CodexAppServerClient extends EventEmitter {
         encoding: "utf8",
         env: this.options.env,
         stdio: ["ignore", "pipe", "pipe"],
+        shell: false,
       });
       if (started.status !== 0) {
         throw new Error(`Failed to start Codex app-server daemon: ${started.stderr || started.stdout || `exit ${started.status}`}`);
@@ -124,6 +125,7 @@ export class CodexAppServerClient extends EventEmitter {
     const proc = spawn(this.options.command, this.options.args, {
       stdio: ["pipe", "pipe", "pipe"],
       env: this.options.env,
+      shell: false,
     });
     this.proc = proc;
     this.rl = readline.createInterface({ input: proc.stdout, crlfDelay: Infinity });

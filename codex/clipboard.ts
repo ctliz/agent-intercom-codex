@@ -34,7 +34,7 @@ function runDetachedClipboardCommand(
     const timeout = setTimeout(() => finish({ ok: false, error: `${command} did not start within ${timeoutMs}ms` }), timeoutMs);
 
     try {
-      const proc = spawn(command, args, { env, stdio: ["pipe", "ignore", "ignore"] });
+      const proc = spawn(command, args, { env, stdio: ["pipe", "ignore", "ignore"], shell: false });
       proc.once("error", (error) => finish({ ok: false, error: error.message }));
       proc.once("spawn", () => {
         proc.stdin.on("error", () => {
@@ -75,7 +75,7 @@ function runClipboardCommand(
     let proc: ReturnType<typeof spawn> | undefined;
 
     try {
-      proc = spawn(command, args, { env, stdio: ["pipe", "ignore", "pipe"] });
+      proc = spawn(command, args, { env, stdio: ["pipe", "ignore", "pipe"], shell: false });
       proc.stderr?.setEncoding("utf8");
       proc.stderr?.on("data", (chunk: string) => {
         if (stderr.length < 4096) stderr += chunk;

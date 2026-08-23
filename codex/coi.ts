@@ -98,6 +98,7 @@ function gitString(cwd: string, args: string[]): string | null {
     cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "ignore"],
+    shell: false,
   });
   if (result.status !== 0) return null;
   const trimmed = result.stdout.trim();
@@ -499,7 +500,7 @@ export async function runInteractiveTui(
   // cannot reintroduce an ambient-PATH spawn after the initial preflight.
   assertHardenedBossProviderAuthority(protectedBossClient);
   const runInherited = async (): Promise<number> => {
-    const tui = spawn(command, args, { cwd, env: launchEnv, stdio: "inherit" });
+    const tui = spawn(command, args, { cwd, env: launchEnv, stdio: "inherit", shell: false });
     const [code, signal] = await once(tui, "exit") as [number | null, NodeJS.Signals | null];
     if (typeof code === "number") return code;
     return signal === "SIGINT" ? 130 : 1;
@@ -634,6 +635,7 @@ export async function runCoi(options: CoiOptions, env: NodeJS.ProcessEnv = proce
       cwd: options.cwd,
       env,
       stdio: "inherit",
+      shell: false,
     });
     const [code, signal] = await once(help, "exit") as [number | null, NodeJS.Signals | null];
     if (typeof code === "number") return code;
@@ -669,6 +671,7 @@ export async function runCoi(options: CoiOptions, env: NodeJS.ProcessEnv = proce
     cwd: options.cwd,
     env,
     stdio: ["ignore", "ignore", "pipe"],
+    shell: false,
   });
   appServer.stderr?.on("data", (chunk) => {
     if (env.CODEX_INTERCOM_DEBUG) process.stderr.write(String(chunk));

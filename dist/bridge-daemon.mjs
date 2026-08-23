@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-process.stderr.write("[agent-intercom-build] package=@ctliz/agent-intercom-codex version=0.12.0-connect.1 target=bridge-daemon sourceSha256=f5d619a0fa1debe9fa5b5850ec8d372a474488d0fb4bde6540cd7656f6bb2c51\n");
+process.stderr.write("[agent-intercom-build] package=@ctliz/agent-intercom-codex version=0.12.0-connect.2 target=bridge-daemon sourceSha256=618efd98d8b0f52e066dbc535b3d8f61e7221d9f6c40cb2a3a1da690cbcae849\n");
 
 // codex/bridge-daemon.ts
 import { once } from "node:events";
@@ -95,7 +95,8 @@ var CodexAppServerClient = class extends EventEmitter {
       const started = spawnSync(this.options.startDaemonCommand, this.options.startDaemonArgs, {
         encoding: "utf8",
         env: this.options.env,
-        stdio: ["ignore", "pipe", "pipe"]
+        stdio: ["ignore", "pipe", "pipe"],
+        shell: false
       });
       if (started.status !== 0) {
         throw new Error(`Failed to start Codex app-server daemon: ${started.stderr || started.stdout || `exit ${started.status}`}`);
@@ -108,7 +109,8 @@ var CodexAppServerClient = class extends EventEmitter {
     }
     const proc = spawn(this.options.command, this.options.args, {
       stdio: ["pipe", "pipe", "pipe"],
-      env: this.options.env
+      env: this.options.env,
+      shell: false
     });
     this.proc = proc;
     this.rl = readline.createInterface({ input: proc.stdout, crlfDelay: Infinity });
@@ -2435,7 +2437,8 @@ function getBrokerSpawnOptions(extensionDir = EXTENSION_DIR, env = process.env) 
     stdio: "ignore",
     cwd: extensionDir,
     env: { ...env, PI_CODING_AGENT_DIR: getAgentDirPath(env), NODE_NO_WARNINGS: "1" },
-    windowsHide: true
+    windowsHide: true,
+    shell: false
   };
 }
 function toError2(error) {

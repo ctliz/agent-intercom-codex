@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.0-connect.2 - 2026-08-23
+
+- Add complete OpenAI MCP tool annotations for all nine Intercom tools.
+- Cover every MCP tool by name and verify the exact annotation semantics in tests.
+- Explicitly disable shell execution for production child-process launches while keeping arguments separated.
+
 ## 0.11.0-connect.1 - 2026-08-14
 
 - Support Protocol v4 broker-enforced scope isolation (`AGENT_INTERCOM_SCOPE_ID`) and canonical `ctliz` distribution.

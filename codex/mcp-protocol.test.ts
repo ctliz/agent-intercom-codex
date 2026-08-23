@@ -23,22 +23,53 @@ test("initialize returns MCP capabilities", async () => {
   assert.deepEqual((response?.result as any).capabilities, { tools: {} });
 });
 
-test("tools/list includes intercom tools", async () => {
+test("tools/list includes every intercom tool with complete annotations", async () => {
   const response = await handleMcpRequest({ id: 2, method: "tools/list" }, fakeRuntime());
-  const tools = (response?.result as any).tools as Array<{ name: string }>;
+  const tools = (response?.result as any).tools as Array<{ name: string; annotations: Record<string, unknown>; inputSchema: any }>;
 
-  assert.ok(tools.some((tool) => tool.name === "intercom_team"));
-  assert.ok(tools.some((tool) => tool.name === "intercom_list"));
-  assert.ok(tools.some((tool) => tool.name === "intercom_ask"));
-  assert.ok(tools.some((tool) => tool.name === "intercom_reply"));
-  const reply = tools.find((tool) => tool.name === "intercom_reply") as any;
+  assert.deepEqual(tools.map((tool) => tool.name), [
+    "intercom_whoami",
+    "intercom_team",
+    "intercom_status",
+    "intercom_list",
+    "intercom_set_summary",
+    "intercom_send",
+    "intercom_ask",
+    "intercom_pending",
+    "intercom_reply",
+  ]);
+  const expectedAnnotations: Record<string, Record<string, boolean>> = {
+    intercom_whoami: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    intercom_team: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    intercom_status: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    intercom_list: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    intercom_set_summary: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    intercom_send: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    intercom_ask: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    intercom_pending: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
+    intercom_reply: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
+  };
+  for (const tool of tools) assert.deepEqual(tool.annotations, expectedAnnotations[tool.name]);
+
+  const reply = tools.find((tool) => tool.name === "intercom_reply")!;
   assert.ok(reply.inputSchema.properties.which);
   assert.equal(reply.inputSchema.properties.reply_to, undefined);
 });
 
-test("intercom_team requires no arguments and returns the manager", async () => {
-  const response = await handleMcpRequest({ id: 20, method: "tools/call", params: { name: "intercom_team", arguments: {} } }, fakeRuntime());
-  assert.equal(((response?.result as any).content[0]).text, "Manager: manager-1");
+test("read and presence tools dispatch to their runtime handlers", async () => {
+  const cases = [
+    ["intercom_whoami", {}, "me"],
+    ["intercom_team", {}, "Manager: manager-1"],
+    ["intercom_status", {}, "ok"],
+    ["intercom_list", {}, "sessions"],
+    ["intercom_set_summary", { summary: "working" }, "summary:working"],
+    ["intercom_pending", {}, "pending"],
+  ] as const;
+
+  for (const [name, args, expected] of cases) {
+    const response = await handleMcpRequest({ id: `call-${name}`, method: "tools/call", params: { name, arguments: args } }, fakeRuntime());
+    assert.equal(((response?.result as any).content[0]).text, expected);
+  }
 });
 
 test("intercom_reply forwards the sender and oldest/latest selector", async () => {
