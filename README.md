@@ -5,7 +5,7 @@
   <img src="./assets/logo-generated.png" alt="Codex Intercom generated PNG logo" width="96" height="96">
 </p>
 
-**Agent Intercom** is a cross-harness, same-machine messaging system for coding agents. Its Pi, Codex, Claude Code, and OpenCode adapters share one local broker and protocol, so sessions can discover and message each other regardless of which harness they run in.
+**Agent Intercom** is a cross-harness, same-machine messaging system for coding agents. Its Pi, Codex, Claude Code, OpenCode, Grok Build, and AGY adapters share one local broker and protocol, so sessions can discover and message each other regardless of which harness they run in.
 
 | Harness | Repository |
 |---|---|
@@ -14,7 +14,11 @@
 | Codex | [`agent-intercom-codex`](https://github.com/ctliz/agent-intercom-codex) |
 | Claude Code | [`agent-intercom-claude`](https://github.com/ctliz/agent-intercom-claude) |
 | OpenCode | [`agent-intercom-opencode`](https://github.com/ctliz/agent-intercom-opencode) |
+| Grok Build | [`agent-intercom-grok`](https://github.com/ctliz/agent-intercom-grok) |
+| AGY | [`agent-intercom-agy`](https://github.com/ctliz/agent-intercom-agy) |
 | Fleet lifecycle | [`agent-intercom-orchestrator`](https://github.com/ctliz/agent-intercom-orchestrator) |
+
+Grok Build and AGY use lightweight npm-packaged MCP launchers backed by the Claude MCP runtime. They retain inbound messages for `intercom_pending` polling but do not provide wake-on-message.
 
 ## Maintenance & Upstream Provenance
 
@@ -97,11 +101,10 @@ For normal use, install the package so the command-line entry points are on
 `PATH`:
 
 ```bash
-git clone --depth 1 --branch v0.11.0-connect.2 https://github.com/ctliz/agent-intercom-codex.git
-cd agent-intercom-codex && npm ci && npm link
+npm install -g @ctliz/agent-intercom-codex@connect
+# or by exact prerelease version
+npm install -g @ctliz/agent-intercom-codex@0.12.0-connect.3
 ```
-
-> The public npm package `@ctliz/agent-intercom-codex` is **not yet published**. GitHub at the exact connect tag is the only supported install path for this release.
 
 This provides:
 
@@ -132,8 +135,8 @@ stable names or IDs.
 To let a Pi manager create Codex workers with owned systemd cgroups, leases, model/effort selection, logs, and verified cleanup, install the companion Pi packages:
 
 ```bash
-pi install git:github.com/ctliz/agent-intercom-pi@v0.11.0-connect.2
-pi install git:github.com/ctliz/agent-intercom-orchestrator@v0.11.0-connect.2
+pi install git:github.com/ctliz/agent-intercom-pi@v0.12.0-connect.4
+pi install git:github.com/ctliz/agent-intercom-orchestrator@v0.12.0-connect.2
 ```
 
 Restart Pi or run `/reload`, then call `agent_fleet({ action: "doctor" })`. The orchestrator invokes the installed `coi` command, or a separately configured minimal wrapper such as `coim`; it does not replace this Codex adapter.

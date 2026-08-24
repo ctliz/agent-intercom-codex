@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.12.0-connect.3 - 2026-08-24
+
+- Add the npm-packaged Grok Build and AGY MCP adapters to the synchronized Agent Intercom family documentation.
+- Refresh npm and companion Pi/Orchestrator install examples to current releases.
+
 ## 0.12.0-connect.2 - 2026-08-23
 
 - Add complete OpenAI MCP tool annotations for all nine Intercom tools.

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-process.stderr.write("[agent-intercom-build] package=@ctliz/agent-intercom-codex version=0.12.0-connect.2 target=coi sourceSha256=618efd98d8b0f52e066dbc535b3d8f61e7221d9f6c40cb2a3a1da690cbcae849\n");
+process.stderr.write("[agent-intercom-build] package=@ctliz/agent-intercom-codex version=0.12.0-connect.3 target=coi sourceSha256=d7208ae5db4e820dfc584a6a8a4a96f5ccf548f20872199024f6d4c955f85622\n");
 
 // codex/coi.ts
 import { once as once2 } from "node:events";
