@@ -1,4 +1,4 @@
-process.stderr.write("[agent-intercom-build] package=@ctliz/agent-intercom-codex version=0.12.0-connect.5 target=broker sourceSha256=75067c6089aaf32b6c3234bda549a6ede912dd2dc0659804c1ff93a7848c86c6\n");
+process.stderr.write("[agent-intercom-build] package=@ctliz/agent-intercom-codex version=0.12.0-connect.6 target=broker sourceSha256=2f84f8a3fd8f97cb77cd03bc8a036c0ec90bfe1c67d3750a707f8814dcaf6c21\n");
 
 // broker/broker.ts
 import net from "net";
