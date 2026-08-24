@@ -103,7 +103,7 @@ For normal use, install the package so the command-line entry points are on
 ```bash
 npm install -g @ctliz/agent-intercom-codex@connect
 # or by exact prerelease version
-npm install -g @ctliz/agent-intercom-codex@0.12.0-connect.3
+npm install -g @ctliz/agent-intercom-codex@0.12.0-connect.4
 ```
 
 This provides:
@@ -135,8 +135,8 @@ stable names or IDs.
 To let a Pi manager create Codex workers with owned systemd cgroups, leases, model/effort selection, logs, and verified cleanup, install the companion Pi packages:
 
 ```bash
-pi install git:github.com/ctliz/agent-intercom-pi@v0.12.0-connect.4
-pi install git:github.com/ctliz/agent-intercom-orchestrator@v0.12.0-connect.2
+pi install git:github.com/ctliz/agent-intercom-pi@v0.12.0-connect.5
+pi install git:github.com/ctliz/agent-intercom-orchestrator@v0.12.0-connect.3
 ```
 
 Restart Pi or run `/reload`, then call `agent_fleet({ action: "doctor" })`. The orchestrator invokes the installed `coi` command, or a separately configured minimal wrapper such as `coim`; it does not replace this Codex adapter.
