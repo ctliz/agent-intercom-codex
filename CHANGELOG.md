@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.12.0-connect.7 - 2026-08-24
+
+- Document Grok Build and AGY support in detail on the npm package page, including packages, tools, identity, shared scope, Auto-Team participation, and polling-only delivery.
+- Add Grok Build and AGY to npm package description and search metadata.
+
 ## 0.12.0-connect.6 - 2026-08-24
 
 - Synchronize companion install pins with the hosted-CI-validated Orchestrator release.

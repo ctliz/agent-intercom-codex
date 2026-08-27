@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "package": "@ctliz/agent-intercom-codex",
-  "version": "0.12.0-connect.6",
-  "sourceSha256": "2f84f8a3fd8f97cb77cd03bc8a036c0ec90bfe1c67d3750a707f8814dcaf6c21",
+  "version": "0.12.0-connect.7",
+  "sourceSha256": "66e01f9abf631fda9810eeb7ed5f6377a832c0e5b3bb250fe211e74d256d318a",
   "targets": [
     "codex-server",
     "broker",

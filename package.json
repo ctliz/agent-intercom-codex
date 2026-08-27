@@ -1,7 +1,7 @@
 {
   "name": "@ctliz/agent-intercom-codex",
-  "version": "0.12.0-connect.6",
-  "description": "Codex MCP plugin for direct local messaging with Pi and Codex coding-agent sessions.",
+  "version": "0.12.0-connect.7",
+  "description": "Codex MCP plugin and wakeable worker for local messaging with Pi, Claude Code, OpenCode, Grok Build, and AGY agents.",
   "license": "AGPL-3.0-or-later",
   "type": "module",
   "engines": {
@@ -60,7 +60,12 @@
     "mcp",
     "intercom",
     "multi-agent",
-    "pi"
+    "pi",
+    "claude",
+    "opencode",
+    "grok",
+    "grok-build",
+    "agy"
   ],
   "peerDependencies": {
     "@ctliz/agent-intercom-core": "0.2.0"

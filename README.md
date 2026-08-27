@@ -18,7 +18,35 @@
 | AGY | [`agent-intercom-agy`](https://github.com/ctliz/agent-intercom-agy) |
 | Fleet lifecycle | [`agent-intercom-orchestrator`](https://github.com/ctliz/agent-intercom-orchestrator) |
 
-Grok Build and AGY use lightweight npm-packaged MCP launchers backed by the Claude MCP runtime. They retain inbound messages for `intercom_pending` polling but do not provide wake-on-message.
+## Grok Build and AGY support
+
+Grok Build and AGY are supported as first-class protocol peers through two dedicated npm packages:
+
+| Host | npm package | Installed MCP launcher |
+|---|---|---|
+| Grok Build | [`@ctliz/agent-intercom-grok`](https://www.npmjs.com/package/@ctliz/agent-intercom-grok) | `agent-intercom-grok-mcp` |
+| AGY | [`@ctliz/agent-intercom-agy`](https://www.npmjs.com/package/@ctliz/agent-intercom-agy) | `agent-intercom-agy-mcp` |
+
+The host packages depend on `@ctliz/agent-intercom-claude` and load its MCP runtime internally. Users do **not** need to install or place `claude-intercom-mcp` on `PATH` separately. Once connected, Grok and AGY sessions share the same local broker and protocol as Pi, Codex, Claude Code, and OpenCode, and expose all nine MCP operations: `intercom_whoami`, `intercom_list`, `intercom_send`, `intercom_ask`, `intercom_reply`, `intercom_pending`, `intercom_status`, `intercom_team`, and `intercom_set_summary`.
+
+Install the host adapter before installing its plugin:
+
+```bash
+npm install -g @ctliz/agent-intercom-grok
+npm install -g @ctliz/agent-intercom-agy
+```
+
+For multi-pane or Auto-Team-style use, the supervisor must give every MCP child a unique literal identity and the same scope as its intended peers:
+
+```text
+AGENT_INTERCOM_SESSION_ID=<unique-pane-or-worker-id>
+AGENT_INTERCOM_SESSION_NAME=<human-readable-name>
+AGENT_INTERCOM_SCOPE_ID=<shared-team-or-workspace-scope>
+```
+
+The plugin manifests intentionally do not contain static session IDs, because sharing one ID across concurrent panes would create identity collisions. `CLAUDE_INTERCOM_SESSION_ID` and `CLAUDE_INTERCOM_NAME` remain higher-priority compatibility aliases.
+
+Grok Build and AGY currently provide polling-only MCP integrations. Messages are durably retained, but there is no host-specific wake bridge to inject a new turn. Each active agent should call `intercom_pending` at startup and at natural work boundaries. They can join an existing team and exchange messages with every other adapter, but Agent Intercom Orchestrator does not currently spawn or lifecycle-manage Grok or AGY workers.
 
 ## Maintenance & Upstream Provenance
 
@@ -103,7 +131,7 @@ For normal use, install the package so the command-line entry points are on
 ```bash
 npm install -g @ctliz/agent-intercom-codex@connect
 # or by exact prerelease version
-npm install -g @ctliz/agent-intercom-codex@0.12.0-connect.6
+npm install -g @ctliz/agent-intercom-codex@0.12.0-connect.7
 ```
 
 This provides:
@@ -135,7 +163,7 @@ stable names or IDs.
 To let a Pi manager create Codex workers with owned systemd cgroups, leases, model/effort selection, logs, and verified cleanup, install the companion Pi packages:
 
 ```bash
-pi install git:github.com/ctliz/agent-intercom-pi@v0.12.0-connect.7
+pi install git:github.com/ctliz/agent-intercom-pi@v0.12.0-connect.8
 pi install git:github.com/ctliz/agent-intercom-orchestrator@v0.12.0-connect.5
 ```
 
