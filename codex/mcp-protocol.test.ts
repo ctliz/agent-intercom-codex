@@ -6,6 +6,7 @@ function fakeRuntime() {
   return {
     whoami: async () => ({ content: [{ type: "text" as const, text: "me" }], structuredContent: { session_id: "s1" } }),
     team: async () => ({ content: [{ type: "text" as const, text: "Manager: manager-1" }], structuredContent: { manager: { target: "manager-1" } } }),
+    join: async (name?: string, create?: boolean) => ({ content: [{ type: "text" as const, text: `join:${name ?? ""}:${create === true}` }] }),
     status: async () => ({ content: [{ type: "text" as const, text: "ok" }] }),
     list: async () => ({ content: [{ type: "text" as const, text: "sessions" }], structuredContent: { sessions: [] } }),
     setSummary: async (summary: string) => ({ content: [{ type: "text" as const, text: `summary:${summary}` }] }),
@@ -30,6 +31,7 @@ test("tools/list includes every intercom tool with complete annotations", async 
   assert.deepEqual(tools.map((tool) => tool.name), [
     "intercom_whoami",
     "intercom_team",
+    "intercom_join",
     "intercom_status",
     "intercom_list",
     "intercom_set_summary",
@@ -41,6 +43,7 @@ test("tools/list includes every intercom tool with complete annotations", async 
   const expectedAnnotations: Record<string, Record<string, boolean>> = {
     intercom_whoami: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     intercom_team: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    intercom_join: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     intercom_status: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     intercom_list: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     intercom_set_summary: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
@@ -60,6 +63,7 @@ test("read and presence tools dispatch to their runtime handlers", async () => {
   const cases = [
     ["intercom_whoami", {}, "me"],
     ["intercom_team", {}, "Manager: manager-1"],
+    ["intercom_join", { name: "billing" }, "join:billing:false"],
     ["intercom_status", {}, "ok"],
     ["intercom_list", {}, "sessions"],
     ["intercom_set_summary", { summary: "working" }, "summary:working"],

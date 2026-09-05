@@ -8,6 +8,16 @@ import { spawnBrokerIfNeeded } from "../broker/spawn.ts";
 import { getAskTimeoutMs, loadConfig } from "../config.ts";
 import type { Attachment, Message, SessionInfo } from "../types.ts";
 import { formatIntercomTeam, resolveIntercomTeam } from "./team.ts";
+import {
+  createNamedTeam,
+  findNamedTeam,
+  formatCreateSuccess,
+  formatJoinableNamedTeamList,
+  formatNamedJoinSuccess,
+  listNamedTeams,
+  parseTeamName,
+  rejectManagedJoin,
+} from "./named-teams.ts";
 
 export interface CodexRuntimeIdentity {
   sessionId: string;
@@ -214,13 +224,16 @@ export class CodexIntercomRuntime {
   private replyWaiters = new Map<string, ReplyWaiter>();
 
   private readonly clientFactory: () => IntercomClient;
+  private capturedScopeId: string | undefined;
   private readonly prepareConnection: () => Promise<void>;
   private readonly reconnectDelays: number[];
 
   constructor(identity: CodexRuntimeIdentity = buildCodexRuntimeIdentity(), options: CodexIntercomRuntimeOptions = {}) {
     this.identity = identity;
-    const initialScopeId = intercomScopeIdFromEnv();
-    this.clientFactory = options.clientFactory ?? (() => new IntercomClient(initialScopeId ? { scopeId: initialScopeId } : {}));
+    this.capturedScopeId = intercomScopeIdFromEnv();
+    this.clientFactory = options.clientFactory ?? (() => new IntercomClient(
+      this.capturedScopeId ? { scopeId: this.capturedScopeId } : {},
+    ));
     this.prepareConnection = options.prepareConnection ?? (async () => {
       const config = loadConfig();
       if (!config.enabled) throw new Error("Intercom disabled");
@@ -314,6 +327,50 @@ export class CodexIntercomRuntime {
     const client = this.client;
     this.client = null;
     if (client) await client.disconnect();
+  }
+
+  async switchRuntimeScope(nextScopeId: string, managerSessionId?: string): Promise<void> {
+    if (managerSessionId) process.env.AGENT_INTERCOM_MANAGER_TARGET = managerSessionId;
+    else delete process.env.AGENT_INTERCOM_MANAGER_TARGET;
+    if (this.capturedScopeId === nextScopeId && process.env.AGENT_INTERCOM_SCOPE_ID === nextScopeId) {
+      return;
+    }
+    this.reconnectEnabled = false;
+    this.clearReconnectTimer();
+    if (this.connectPromise) {
+      try { await this.connectPromise; } catch { /* ignore in-flight connect */ }
+    }
+    const previous = this.client;
+    this.client = null;
+    if (previous) await previous.disconnect().catch(() => undefined);
+    this.capturedScopeId = nextScopeId;
+    process.env.AGENT_INTERCOM_SCOPE_ID = nextScopeId;
+    this.reconnectEnabled = true;
+    await this.connect();
+  }
+
+  async join(name?: string, create = false): Promise<ToolResult> {
+    const blocked = rejectManagedJoin();
+    if (blocked) return textResult(blocked, { ok: false }, true);
+    try {
+      if (create) {
+        if (typeof name !== "string" || !name.trim()) {
+          return textResult("Creating a team requires a name.", { ok: false }, true);
+        }
+        const team = createNamedTeam({ name: parseTeamName(name), managerSessionId: this.identity.sessionId });
+        await this.switchRuntimeScope(team.scopeId, team.managerSessionId);
+        return textResult(formatCreateSuccess({ team: team.name, name: this.identity.name }), { ok: true, team: team.name, role: "manager" });
+      }
+      if (!name?.trim()) {
+        return textResult(formatJoinableNamedTeamList(listNamedTeams()));
+      }
+      const team = findNamedTeam(parseTeamName(name));
+      if (!team) return textResult("Could not join that team.", { ok: false }, true);
+      await this.switchRuntimeScope(team.scopeId, team.managerSessionId);
+      return textResult(formatNamedJoinSuccess({ team: team.name, name: this.identity.name }), { ok: true, team: team.name, role: "teammate" });
+    } catch (error) {
+      return textResult(error instanceof Error ? error.message : String(error), { ok: false }, true);
+    }
   }
 
   private handleIncomingMessage(from: SessionInfo, message: Message): void {

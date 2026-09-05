@@ -27,7 +27,7 @@ Grok Build and AGY are supported as first-class protocol peers through two dedic
 | Grok Build | [`@ctliz/agent-intercom-grok`](https://www.npmjs.com/package/@ctliz/agent-intercom-grok) | `agent-intercom-grok-mcp` |
 | AGY | [`@ctliz/agent-intercom-agy`](https://www.npmjs.com/package/@ctliz/agent-intercom-agy) | `agent-intercom-agy-mcp` |
 
-The host packages depend on `@ctliz/agent-intercom-claude` and load its MCP runtime internally. Users do **not** need to install or place `claude-intercom-mcp` on `PATH` separately. Once connected, Grok and AGY sessions share the same local broker and protocol as Pi, Codex, Claude Code, and OpenCode, and expose all nine MCP operations: `intercom_whoami`, `intercom_list`, `intercom_send`, `intercom_ask`, `intercom_reply`, `intercom_pending`, `intercom_status`, `intercom_team`, and `intercom_set_summary`.
+The host packages depend on `@ctliz/agent-intercom-claude` and load its MCP runtime internally. Users do **not** need to install or place `claude-intercom-mcp` on `PATH` separately. Once connected, Grok and AGY sessions share the same local broker and protocol as Pi, Codex, Claude Code, and OpenCode, and expose the MCP operations: `intercom_whoami`, `intercom_list`, `intercom_send`, `intercom_ask`, `intercom_reply`, `intercom_pending`, `intercom_status`, `intercom_team`, `intercom_join`, and `intercom_set_summary`.
 
 Install the host adapter before installing its plugin:
 
@@ -131,7 +131,7 @@ For normal use, install the package so the command-line entry points are on
 ```bash
 npm install -g @ctliz/agent-intercom-codex@connect
 # or by exact prerelease version
-npm install -g @ctliz/agent-intercom-codex@0.12.0-connect.7
+npm install -g @ctliz/agent-intercom-codex@0.12.0-connect.8
 ```
 
 This provides:
@@ -163,7 +163,7 @@ stable names or IDs.
 To let a Pi manager create Codex workers with owned systemd cgroups, leases, model/effort selection, logs, and verified cleanup, install the companion Pi packages:
 
 ```bash
-pi install git:github.com/ctliz/agent-intercom-pi@v0.12.0-connect.8
+pi install git:github.com/ctliz/agent-intercom-pi@v0.12.0-connect.9
 pi install git:github.com/ctliz/agent-intercom-orchestrator@v0.12.0-connect.5
 ```
 
@@ -187,6 +187,7 @@ intercom tools.
 
 - `intercom_whoami`: show this session's intercom ID, name, cwd, and model.
 - `intercom_team`: show the current manager and live coworkers owned by that manager.
+- `intercom_join`: list, join, or create a named team without tmux (`create: true` joins as manager).
 - `intercom_status`: show connection status and pending message counts.
 - `intercom_list`: list local Pi, Codex, Claude Code, and OpenCode sessions in your scope (protocol v4 is same-scope; cross-scope contact requires an exact full session ID).
 - `intercom_set_summary`: publish a short discoverable status.

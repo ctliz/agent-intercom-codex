@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   CodexIntercomRuntime,
   buildCodexRuntimeIdentity,
@@ -196,6 +199,45 @@ test("runtime reconnects automatically after the broker connection drops", async
   assert.equal(second.connectCount, 1);
   assert.equal(second.sessionId, "reconnect-codex");
   await runtime.disconnect();
+});
+
+test("runtime join creates a named team and switches captured scope", async () => {
+  const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+  const previousScope = process.env.AGENT_INTERCOM_SCOPE_ID;
+  const previousManager = process.env.AGENT_INTERCOM_MANAGER_TARGET;
+  const agentDir = mkdtempSync(join(tmpdir(), "codex-named-team-"));
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+  delete process.env.AGENT_INTERCOM_SCOPE_ID;
+  delete process.env.AGENT_INTERCOM_MANAGER_TARGET;
+  const runtime = new CodexIntercomRuntime({
+    sessionId: "codex-planner",
+    name: "planner",
+    cwd: "/tmp",
+    model: "test",
+    startedAt: Date.now(),
+  }, {
+    prepareConnection: async () => {},
+    clientFactory: () => new FakeIntercomClient() as unknown as IntercomClient,
+  });
+  try {
+    const created = await runtime.join("billing", true);
+    assert.match(created.content[0]!.text, /Created team billing/);
+    assert.doesNotMatch(created.content[0]!.text, /[0-9a-f]{48}/);
+    const captured = (runtime as unknown as { capturedScopeId?: string }).capturedScopeId;
+    assert.match(captured ?? "", /^[0-9a-f]{48}$/);
+    assert.equal(process.env.AGENT_INTERCOM_MANAGER_TARGET, "codex-planner");
+    const listed = await runtime.join();
+    assert.match(listed.content[0]!.text, /  1\) billing/);
+  } finally {
+    await runtime.disconnect();
+    if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+    if (previousScope === undefined) delete process.env.AGENT_INTERCOM_SCOPE_ID;
+    else process.env.AGENT_INTERCOM_SCOPE_ID = previousScope;
+    if (previousManager === undefined) delete process.env.AGENT_INTERCOM_MANAGER_TARGET;
+    else process.env.AGENT_INTERCOM_MANAGER_TARGET = previousManager;
+    rmSync(agentDir, { recursive: true, force: true });
+  }
 });
 
 test("detectGitRoot finds the current repository root", () => {

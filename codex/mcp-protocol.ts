@@ -91,6 +91,23 @@ export function buildToolDefinitions(runtime: CodexIntercomRuntime): ToolDefinit
       handler: async () => runtime.team(),
     },
     {
+      name: "intercom_join",
+      description: "List, join, or create a named intercom team without tmux. Omit name to list joinable teams. Set create=true to create a team and join as manager.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Team name to join. Omit to list joinable teams." },
+          create: { type: "boolean", description: "Create this named team and join as manager. Requires name." },
+        },
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      handler: async (args) => runtime.join(
+        typeof args.name === "string" ? args.name : undefined,
+        args.create === true,
+      ),
+    },
+    {
       name: "intercom_status",
       description: "Show intercom connection status, active sessions, unread messages, and pending asks.",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
