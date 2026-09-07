@@ -131,7 +131,7 @@ For normal use, install the package so the command-line entry points are on
 ```bash
 npm install -g @ctliz/agent-intercom-codex@connect
 # or by exact prerelease version
-npm install -g @ctliz/agent-intercom-codex@0.12.0-connect.8
+npm install -g @ctliz/agent-intercom-codex@0.12.1
 ```
 
 This provides:
@@ -163,7 +163,7 @@ stable names or IDs.
 To let a Pi manager create Codex workers with owned systemd cgroups, leases, model/effort selection, logs, and verified cleanup, install the companion Pi packages:
 
 ```bash
-pi install git:github.com/ctliz/agent-intercom-pi@v0.12.0-connect.9
+pi install git:github.com/ctliz/agent-intercom-pi@v0.12.2
 pi install git:github.com/ctliz/agent-intercom-orchestrator@v0.12.0-connect.5
 ```
 
