@@ -426,6 +426,15 @@ export class VirtualCodexAgent {
     const threadId = getNotificationThreadId(message.params);
     if (!threadId || threadId !== this.threadId) return;
 
+    if (message.method === "thread/name/updated" && isRecord(message.params)) {
+      const name = message.params.threadName;
+      if (typeof name === "string" && name.trim() && name !== this.agent.name) {
+        this.agent.name = name;
+        this.client.updatePresence({ name });
+      }
+      return;
+    }
+
     if (message.method === "error") {
       const params = isRecord(message.params) ? message.params : {};
       const detail = isRecord(params.error) && typeof params.error.message === "string"
@@ -477,13 +486,18 @@ export class VirtualCodexAgent {
     if (this.threadId) {
       try {
         const sandbox = bridgeAgentSandboxMode(this.agent);
-        await this.app.request("thread/resume", {
+        const result = await this.app.request("thread/resume", {
           threadId: this.threadId,
           cwd: this.agent.cwd,
           model: this.agent.model ?? null,
           approvalPolicy: bridgeAgentApprovalPolicy(this.agent),
           sandbox,
         });
+        if (isRecord(result) && isRecord(result.thread)) {
+          this.onNotification({ method: "thread/name/updated", params: {
+            threadId: this.threadId, threadName: result.thread.name,
+          } });
+        }
         return this.threadId;
       } catch {
         this.threadId = null;

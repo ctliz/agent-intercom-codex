@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-process.stderr.write("[agent-intercom-build] package=@ctliz/agent-intercom-codex version=0.12.0-connect.7 target=coi sourceSha256=66e01f9abf631fda9810eeb7ed5f6377a832c0e5b3bb250fe211e74d256d318a\n");
+process.stderr.write("[agent-intercom-build] package=@ctliz/agent-intercom-codex version=0.12.2 target=coi sourceSha256=fb36315f414b3f19538f70942c884026e951ee63fb0060970c2c041e21aed32d\n");
 
 // codex/coi.ts
 import { once as once2 } from "node:events";
@@ -3470,6 +3470,14 @@ var VirtualCodexAgent = class {
   onNotification(message) {
     const threadId = getNotificationThreadId(message.params);
     if (!threadId || threadId !== this.threadId) return;
+    if (message.method === "thread/name/updated" && isRecord2(message.params)) {
+      const name = message.params.threadName;
+      if (typeof name === "string" && name.trim() && name !== this.agent.name) {
+        this.agent.name = name;
+        this.client.updatePresence({ name });
+      }
+      return;
+    }
     if (message.method === "error") {
       const params = isRecord2(message.params) ? message.params : {};
       const detail = isRecord2(params.error) && typeof params.error.message === "string" ? params.error.message : "Codex turn error";
@@ -3516,13 +3524,19 @@ var VirtualCodexAgent = class {
     if (this.threadId) {
       try {
         const sandbox2 = bridgeAgentSandboxMode(this.agent);
-        await this.app.request("thread/resume", {
+        const result2 = await this.app.request("thread/resume", {
           threadId: this.threadId,
           cwd: this.agent.cwd,
           model: this.agent.model ?? null,
           approvalPolicy: bridgeAgentApprovalPolicy(this.agent),
           sandbox: sandbox2
         });
+        if (isRecord2(result2) && isRecord2(result2.thread)) {
+          this.onNotification({ method: "thread/name/updated", params: {
+            threadId: this.threadId,
+            threadName: result2.thread.name
+          } });
+        }
         return this.threadId;
       } catch {
         this.threadId = null;

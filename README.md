@@ -224,6 +224,12 @@ For longer work, use `intercom_send` and check later with `intercom_pending`.
 for that socket, creates or resumes the sidecar's app-server thread, then
 launches an interactive Codex UI attached to the same socket and thread.
 
+Native thread renames (`thread/name/updated`) update the sidecar's Intercom
+presence without changing its stable ID. Reconnects retain the updated name;
+resuming a thread adopts its persisted `thread.name` rather than replacing it
+with the launcher's default. The notification schema was checked against Codex
+CLI 0.155.1 and 0.159.2. Protocol v4 and delivery ACK behavior are unchanged.
+
 Start a named worker:
 
 ```bash

@@ -1,6 +1,6 @@
 {
   "name": "codex-intercom",
-  "version": "0.1.0",
+  "version": "0.12.2",
   "description": "Codex MCP plugin and bridge daemon for local Pi/Codex intercom messaging.",
   "author": {
     "name": "ctliz",

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.12.2 - 2026-09-30
+
+- Synchronize native `thread/name/updated` notifications into Intercom presence without changing stable session IDs; retain the updated name on broker reconnect.
+- Adopt persisted `thread.name` on resume instead of overriding it with launcher defaults.
+- Verify rename notification schemas against Codex CLI 0.155.1 and 0.159.2; keep protocol v4 framing, durable queues, and delivery ACK semantics unchanged.
+
 ## 0.12.1 - 2026-09-06
 
 - Stable release of named teams without tmux. `intercom_join` works outside TmuxDeck.

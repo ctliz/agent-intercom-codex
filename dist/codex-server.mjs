@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-process.stderr.write("[agent-intercom-build] package=@ctliz/agent-intercom-codex version=0.12.0-connect.7 target=codex-server sourceSha256=66e01f9abf631fda9810eeb7ed5f6377a832c0e5b3bb250fe211e74d256d318a\n");
+process.stderr.write("[agent-intercom-build] package=@ctliz/agent-intercom-codex version=0.12.2 target=codex-server sourceSha256=fb36315f414b3f19538f70942c884026e951ee63fb0060970c2c041e21aed32d\n");
 
 // codex/server.ts
 import readline from "node:readline";
@@ -2343,6 +2343,148 @@ function formatIntercomTeam(team) {
   return lines.join("\n");
 }
 
+// codex/named-teams.ts
+import { randomBytes } from "node:crypto";
+import { readFileSync as readFileSync7 } from "node:fs";
+import { join as join7 } from "node:path";
+var NAMED_TEAMS_FILE = "named-teams.json";
+var NAMED_TEAMS_VERSION = 1;
+var NAMED_TEAM_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_-]{0,31}$/;
+function isNamedTeamScope(value) {
+  if (value.length !== 48) return false;
+  for (const char of value) {
+    if (!(char >= "0" && char <= "9" || char >= "a" && char <= "f")) return false;
+  }
+  return true;
+}
+function teamsFilePath(agentDir) {
+  return join7(getIntercomDirPath(agentDir ?? getAgentDirPath()), NAMED_TEAMS_FILE);
+}
+function genericReadError() {
+  return new Error("Could not read the local named-team list.");
+}
+function genericWriteError() {
+  return new Error("Could not create that named team.");
+}
+function isPlainObject(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function parseStoredTeam(value) {
+  if (!isPlainObject(value)) return void 0;
+  if (typeof value.name !== "string" || !NAMED_TEAM_NAME_PATTERN.test(value.name)) return void 0;
+  if (typeof value.scopeId !== "string" || !isNamedTeamScope(value.scopeId)) return void 0;
+  if (typeof value.managerSessionId !== "string" || !value.managerSessionId.trim()) return void 0;
+  if (value.managerSessionId !== value.managerSessionId.trim() || /[\u0000-\u001f\u007f]/.test(value.managerSessionId)) {
+    return void 0;
+  }
+  if (typeof value.createdAt !== "number" || !Number.isSafeInteger(value.createdAt) || value.createdAt <= 0) {
+    return void 0;
+  }
+  return {
+    name: value.name,
+    scopeId: value.scopeId,
+    managerSessionId: value.managerSessionId,
+    createdAt: value.createdAt
+  };
+}
+function rejectManagedJoin(env = process.env) {
+  if (env.AGENT_INTERCOM_WORKER_ID?.trim() || env.AGENT_INTERCOM_OWNED === "1" || env.AGENT_INTERCOM_TEAM_MANIFEST?.trim()) {
+    return "This session is already a managed member and cannot join another team.";
+  }
+  return void 0;
+}
+function parseTeamName(raw) {
+  const name = raw.trim();
+  if (!name || name.includes(" ") || !NAMED_TEAM_NAME_PATTERN.test(name)) {
+    throw new Error("Team names start with a letter and may include letters, numbers, hyphens, or underscores (max 32).");
+  }
+  return name;
+}
+function generateNamedTeamScope(existing = []) {
+  const taken = new Set(existing);
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const scopeId = randomBytes(24).toString("hex");
+    if (!taken.has(scopeId)) return scopeId;
+  }
+  throw genericWriteError();
+}
+function listNamedTeams(agentDir) {
+  let raw;
+  try {
+    raw = readFileSync7(teamsFilePath(agentDir), "utf8");
+  } catch (error2) {
+    if (error2 && typeof error2 === "object" && "code" in error2 && error2.code === "ENOENT") return [];
+    throw genericReadError();
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw genericReadError();
+  }
+  if (!isPlainObject(parsed) || parsed.version !== NAMED_TEAMS_VERSION || !Array.isArray(parsed.teams)) {
+    throw genericReadError();
+  }
+  const teams = [];
+  const names = /* @__PURE__ */ new Set();
+  const scopes = /* @__PURE__ */ new Set();
+  for (const entry of parsed.teams) {
+    const team = parseStoredTeam(entry);
+    if (!team || names.has(team.name) || scopes.has(team.scopeId)) throw genericReadError();
+    names.add(team.name);
+    scopes.add(team.scopeId);
+    teams.push(team);
+  }
+  return teams;
+}
+function findNamedTeam(name, agentDir) {
+  return listNamedTeams(agentDir).find((team) => team.name === name);
+}
+function createNamedTeam(input) {
+  const name = parseTeamName(input.name);
+  const managerSessionId = input.managerSessionId.trim();
+  if (!managerSessionId || managerSessionId !== input.managerSessionId || /[\u0000-\u001f\u007f]/.test(managerSessionId)) {
+    throw genericWriteError();
+  }
+  const existing = listNamedTeams(input.agentDir);
+  if (existing.some((team2) => team2.name === name)) {
+    throw new Error(`A named team called ${name} already exists.`);
+  }
+  const scopeId = (input.generateScope ?? (() => generateNamedTeamScope(existing.map((team2) => team2.scopeId))))();
+  if (!isNamedTeamScope(scopeId) || existing.some((team2) => team2.scopeId === scopeId)) {
+    throw genericWriteError();
+  }
+  const team = {
+    name,
+    scopeId,
+    managerSessionId,
+    createdAt: input.now ?? Date.now()
+  };
+  const dir = getIntercomDirPath(input.agentDir ?? getAgentDirPath());
+  ensureIntercomRuntimeDir(dir);
+  const payload = { version: NAMED_TEAMS_VERSION, teams: [...existing, team] };
+  writeDurableJson(teamsFilePath(input.agentDir), payload);
+  return team;
+}
+function formatJoinableNamedTeamList(teams) {
+  if (teams.length === 0) {
+    return 'No joinable named teams found.\nCreate one with intercom_join({ name: "billing", create: true }).';
+  }
+  return [
+    "Joinable named teams:",
+    ...teams.map((team, index) => `  ${index + 1}) ${team.name}`)
+  ].join("\n");
+}
+function formatCreateSuccess(input) {
+  return `Created team ${input.team} and joined as manager.
+Display name: ${input.name}`;
+}
+function formatNamedJoinSuccess(input) {
+  return `Joined team ${input.team}.
+Role: teammate
+Display name: ${input.name}`;
+}
+
 // codex/runtime.ts
 function matchesPendingSender(entry, to) {
   return entry.from.id === to || entry.from.name?.toLowerCase() === to.toLowerCase() || entry.from.id.startsWith(to);
@@ -2497,12 +2639,15 @@ var CodexIntercomRuntime = class {
   unresolvedAsks = /* @__PURE__ */ new Map();
   replyWaiters = /* @__PURE__ */ new Map();
   clientFactory;
+  capturedScopeId;
   prepareConnection;
   reconnectDelays;
   constructor(identity = buildCodexRuntimeIdentity(), options = {}) {
     this.identity = identity;
-    const initialScopeId = intercomScopeIdFromEnv();
-    this.clientFactory = options.clientFactory ?? (() => new IntercomClient(initialScopeId ? { scopeId: initialScopeId } : {}));
+    this.capturedScopeId = intercomScopeIdFromEnv();
+    this.clientFactory = options.clientFactory ?? (() => new IntercomClient(
+      this.capturedScopeId ? { scopeId: this.capturedScopeId } : {}
+    ));
     this.prepareConnection = options.prepareConnection ?? (async () => {
       const config = loadConfig();
       if (!config.enabled) throw new Error("Intercom disabled");
@@ -2589,6 +2734,51 @@ var CodexIntercomRuntime = class {
     const client = this.client;
     this.client = null;
     if (client) await client.disconnect();
+  }
+  async switchRuntimeScope(nextScopeId, managerSessionId) {
+    if (managerSessionId) process.env.AGENT_INTERCOM_MANAGER_TARGET = managerSessionId;
+    else delete process.env.AGENT_INTERCOM_MANAGER_TARGET;
+    if (this.capturedScopeId === nextScopeId && process.env.AGENT_INTERCOM_SCOPE_ID === nextScopeId) {
+      return;
+    }
+    this.reconnectEnabled = false;
+    this.clearReconnectTimer();
+    if (this.connectPromise) {
+      try {
+        await this.connectPromise;
+      } catch {
+      }
+    }
+    const previous = this.client;
+    this.client = null;
+    if (previous) await previous.disconnect().catch(() => void 0);
+    this.capturedScopeId = nextScopeId;
+    process.env.AGENT_INTERCOM_SCOPE_ID = nextScopeId;
+    this.reconnectEnabled = true;
+    await this.connect();
+  }
+  async join(name, create = false) {
+    const blocked = rejectManagedJoin();
+    if (blocked) return textResult(blocked, { ok: false }, true);
+    try {
+      if (create) {
+        if (typeof name !== "string" || !name.trim()) {
+          return textResult("Creating a team requires a name.", { ok: false }, true);
+        }
+        const team2 = createNamedTeam({ name: parseTeamName(name), managerSessionId: this.identity.sessionId });
+        await this.switchRuntimeScope(team2.scopeId, team2.managerSessionId);
+        return textResult(formatCreateSuccess({ team: team2.name, name: this.identity.name }), { ok: true, team: team2.name, role: "manager" });
+      }
+      if (!name?.trim()) {
+        return textResult(formatJoinableNamedTeamList(listNamedTeams()));
+      }
+      const team = findNamedTeam(parseTeamName(name));
+      if (!team) return textResult("Could not join that team.", { ok: false }, true);
+      await this.switchRuntimeScope(team.scopeId, team.managerSessionId);
+      return textResult(formatNamedJoinSuccess({ team: team.name, name: this.identity.name }), { ok: true, team: team.name, role: "teammate" });
+    } catch (error2) {
+      return textResult(error2 instanceof Error ? error2.message : String(error2), { ok: false }, true);
+    }
   }
   handleIncomingMessage(from, message) {
     const waiter = this.replyWaiters.get(message.replyTo ?? "");
@@ -2828,6 +3018,23 @@ function buildToolDefinitions(runtime2) {
       handler: async () => runtime2.team()
     },
     {
+      name: "intercom_join",
+      description: "List, join, or create a named intercom team without tmux. Omit name to list joinable teams. Set create=true to create a team and join as manager.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Team name to join. Omit to list joinable teams." },
+          create: { type: "boolean", description: "Create this named team and join as manager. Requires name." }
+        },
+        additionalProperties: false
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      handler: async (args) => runtime2.join(
+        typeof args.name === "string" ? args.name : void 0,
+        args.create === true
+      )
+    },
+    {
       name: "intercom_status",
       description: "Show intercom connection status, active sessions, unread messages, and pending asks.",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
@@ -2957,7 +3164,7 @@ async function handleMcpRequest(request, runtime2) {
       return ok(request.id, {
         protocolVersion: "2025-06-18",
         capabilities: { tools: {} },
-        serverInfo: { name: "codex-intercom", version: "0.1.0" }
+        serverInfo: { name: "codex-intercom", version: "0.12.2" }
       });
     case "ping":
       return ok(request.id, {});

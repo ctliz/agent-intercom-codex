@@ -12,9 +12,12 @@ class FakeIntercomClient extends EventEmitter {
   connectCount = 0;
   sessionId: string | null = null;
   statuses: string[] = [];
+  names: string[] = [];
+  registrations: Array<{ name?: string }> = [];
 
   isConnected(): boolean { return this.connected; }
-  async connect(_registration: unknown, sessionId?: string): Promise<void> {
+  async connect(registration: { name?: string }, sessionId?: string): Promise<void> {
+    this.registrations.push(registration);
     this.connected = true;
     this.connectCount += 1;
     this.sessionId = sessionId ?? "fake-session";
@@ -23,7 +26,8 @@ class FakeIntercomClient extends EventEmitter {
     this.connected = false;
     this.sessionId = null;
   }
-  updatePresence(presence: { status?: string }): void {
+  updatePresence(presence: { name?: string; status?: string }): void {
+    if (presence.name) this.names.push(presence.name);
     if (presence.status) this.statuses.push(presence.status);
   }
   drop(): void {
@@ -150,6 +154,56 @@ test("persistent Codex bridge reconnects its stable Intercom identity after brok
   assert.equal(client.connectCount, 2);
   assert.equal(client.sessionId, "codex-reconnect");
   await agent.stop();
+});
+
+test("thread rename updates broker presence and survives reconnect without changing identity", async () => {
+  const client = new FakeIntercomClient();
+  const config = { id: "codex-rename", name: "original", cwd: process.cwd() };
+  const agent = new VirtualCodexAgent(config, {} as any,
+    { agents: { "codex-rename": { threadId: "thread-1", updatedAt: 1 } } },
+    "/tmp/codex-rename-state.json", {}, {
+      client: client as unknown as IntercomClient,
+      prepareConnection: async () => {}, reconnectDelays: [1],
+    });
+  try {
+    await agent.start();
+    for (const params of [
+      { threadId: "other-thread", threadName: "wrong" },
+      { threadId: "thread-1", threadName: " " },
+      { threadId: "thread-1", threadName: null },
+      { threadId: "thread-1" },
+      { threadName: "wrong" },
+    ]) agent.onNotification({ method: "thread/name/updated", params });
+    assert.deepEqual(client.names, []);
+    agent.onNotification({ method: "thread/name/updated", params: { threadId: "thread-1", threadName: "reviewer" } });
+    agent.onNotification({ method: "thread/name/updated", params: { threadId: "thread-1", threadName: "reviewer" } });
+    assert.deepEqual(client.names, ["reviewer"]);
+    assert.equal(config.name, "reviewer");
+    assert.equal(client.sessionId, "codex-rename");
+    client.drop();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(client.registrations.at(-1)?.name, "reviewer");
+    assert.equal(client.sessionId, "codex-rename");
+  } finally { await agent.stop(); }
+});
+
+test("resuming a thread adopts its persisted name instead of overwriting it with launcher defaults", async () => {
+  const client = new FakeIntercomClient();
+  const requests: string[] = [];
+  const agent = new VirtualCodexAgent(
+    { id: "codex-resume", name: "launcher-default", cwd: process.cwd(), threadId: "thread-1" } as any,
+    { request: async (method: string) => {
+      requests.push(method);
+      return { thread: { id: "thread-1", name: "persisted-reviewer" } };
+    } } as any, { agents: {} }, "/tmp/codex-resume-state.json", {},
+    { client: client as unknown as IntercomClient, prepareConnection: async () => {} },
+  );
+  try {
+    await agent.start();
+    assert.equal(await agent.ensureThread(), "thread-1");
+    assert.deepEqual(requests, ["thread/resume"]);
+    assert.deepEqual(client.names, ["persisted-reviewer"]);
+  } finally { await agent.stop(); }
 });
 
 test("threadSandboxMode maps bridge sandbox policies to codex thread modes", () => {
