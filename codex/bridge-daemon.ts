@@ -23,6 +23,9 @@ import type { Message, SessionInfo } from "../types.ts";
 import { resolveContactTarget, type IntercomContact } from "./contact.ts";
 import { formatAttachments, formatSessionDisplay, formatSessionList, resolveSessionTarget, type ToolResult } from "./runtime.ts";
 import { formatIntercomTeam, resolveIntercomTeam } from "./team.ts";
+import { appendNamedTeamMembership, sessionNamedTeams, namedTeamRoster, formatNamedTeamRoster, resolveNamedMessageTeam } from "./named-team-membership.ts";
+import { formatJoinableNamedTeamList, listNamedTeams } from "./named-teams.ts";
+import { TASK_TEAM_GUIDANCE } from "./team-guidance.ts";
 
 interface TurnWaiter {
   from: SessionInfo;
@@ -31,6 +34,7 @@ interface TurnWaiter {
 
 interface ToolReplyWaiter {
   from: string;
+  team?: string;
   resolve: (message: Message) => void;
   reject: (error: Error) => void;
   timeout: NodeJS.Timeout;
@@ -58,6 +62,7 @@ export interface VirtualCodexAgentOptions {
 const APPROVED_INTERCOM_TOOLS = new Set([
   "intercom_whoami",
   "intercom_team",
+  "intercom_join",
   "intercom_status",
   "intercom_list",
   "intercom_set_summary",
@@ -88,6 +93,7 @@ function formatMessage(from: SessionInfo, message: Message, agent: BridgeAgentCo
   return [
     `Intercom message for ${agent.name}.`,
     `From: ${formatSessionDisplay(from)} (${from.id})`,
+    ...(message.content.team ? [`[Team: ${message.content.team}]`] : []),
     `Message id: ${message.id}`,
     "",
     message.content.text,
@@ -191,7 +197,7 @@ function getCompletedAgentText(params: unknown): string | null {
   return raw.type === "agentMessage" && typeof raw.text === "string" ? raw.text : null;
 }
 
-function intercomSendFromArgs(rawArgs: unknown): { to: string; message: string } | null {
+function intercomSendFromArgs(rawArgs: unknown): { to: string; message: string; team?: string } | null {
   let args: Record<string, unknown>;
   try {
     args = parseToolArguments(rawArgs);
@@ -199,11 +205,11 @@ function intercomSendFromArgs(rawArgs: unknown): { to: string; message: string }
     return null;
   }
   return typeof args.to === "string" && typeof args.message === "string"
-    ? { to: args.to, message: args.message }
+    ? { to: args.to, message: args.message, ...(typeof args.team === "string" ? { team: args.team } : {}) }
     : null;
 }
 
-export function getCompletedIntercomSend(params: unknown): { to: string; message: string } | null {
+export function getCompletedIntercomSend(params: unknown): { to: string; message: string; team?: string } | null {
   if (!params || typeof params !== "object") return null;
   const item = (params as Record<string, unknown>).item;
   if (!isRecord(item)) return null;
@@ -212,7 +218,7 @@ export function getCompletedIntercomSend(params: unknown): { to: string; message
   return intercomSendFromArgs(item.arguments ?? item.args ?? item.input);
 }
 
-export function getApprovedIntercomSend(params: unknown): { to: string; message: string } | null {
+export function getApprovedIntercomSend(params: unknown): { to: string; message: string; team?: string } | null {
   if (getApprovedIntercomToolFromApproval(params) !== "intercom_send") return null;
   if (!isRecord(params)) return null;
   const meta = isRecord(params._meta) ? params._meta : {};
@@ -234,7 +240,7 @@ function asOptionalPositiveInteger(value: unknown, name: string): number | undef
 }
 
 function normalizeToolName(name: string): string {
-  const mcpMatch = name.match(/(?:^|__|\.)intercom_(whoami|status|list|set_summary|send|ask|pending|reply)$/);
+  const mcpMatch = name.match(/(?:^|__|\.)intercom_(whoami|team|join|status|list|set_summary|send|ask|pending|reply)$/);
   if (mcpMatch) return `intercom_${mcpMatch[1]}`;
   return name;
 }
@@ -511,7 +517,7 @@ export class VirtualCodexAgent {
       approvalPolicy: bridgeAgentApprovalPolicy(this.agent),
       sandbox,
       serviceName: "codex-intercom",
-      developerInstructions: this.agent.instructions ?? null,
+      developerInstructions: [this.agent.instructions, TASK_TEAM_GUIDANCE].filter(Boolean).join("\n\n"),
       threadSource: "cli",
     });
     this.threadId = getThreadId(result);
@@ -525,7 +531,7 @@ export class VirtualCodexAgent {
   private routeMessage(from: SessionInfo, message: Message): Promise<void> {
     const toolWaiter = this.toolReplyWaiters.get(message.replyTo ?? "");
     if (toolWaiter) {
-      if (from.id === toolWaiter.from) {
+      if (from.id === toolWaiter.from && message.content.team === toolWaiter.team) {
         this.toolReplyWaiters.delete(message.replyTo ?? "");
         clearTimeout(toolWaiter.timeout);
         toolWaiter.cleanup?.();
@@ -578,18 +584,22 @@ export class VirtualCodexAgent {
     this.waiters.delete(turnId);
     const reply = this.finalMessages.get(turnId)?.trim() || "Codex turn completed without a final message.";
     for (const waiter of waiters) {
-      await this.client.send(waiter.from.id, { text: reply, replyTo: waiter.message.id }).catch((error) => {
+      await this.client.send(waiter.from.id, { text: reply, replyTo: waiter.message.id, team: waiter.message.content.team }).catch((error) => {
         process.stderr.write(`reply failed for ${this.agent.id}: ${error instanceof Error ? error.message : String(error)}\n`);
       });
     }
   }
 
-  async replyToWaitersFromIntercomSend(turnId: string, send: { to: string; message: string }): Promise<void> {
+  async replyToWaitersFromIntercomSend(turnId: string, send: { to: string; message: string; team?: string }): Promise<void> {
     const waiters = this.waiters.get(turnId);
     if (!waiters?.length) return;
     const lowerTo = send.to.toLowerCase();
     const remaining: TurnWaiter[] = [];
     for (const waiter of waiters) {
+      if (send.team !== undefined && send.team !== waiter.message.content.team) {
+        remaining.push(waiter);
+        continue;
+      }
       const matchesSender = send.to === waiter.from.id
         || waiter.from.id.startsWith(send.to)
         || waiter.from.name?.toLowerCase() === lowerTo;
@@ -597,7 +607,7 @@ export class VirtualCodexAgent {
         remaining.push(waiter);
         continue;
       }
-      await this.client.send(waiter.from.id, { text: send.message, replyTo: waiter.message.id }).catch((error) => {
+      await this.client.send(waiter.from.id, { text: send.message, replyTo: waiter.message.id, team: waiter.message.content.team }).catch((error) => {
         remaining.push(waiter);
         process.stderr.write(`reply failed for ${this.agent.id}: ${error instanceof Error ? error.message : String(error)}\n`);
       });
@@ -664,8 +674,32 @@ export class VirtualCodexAgent {
           `session_id: ${this.agent.id}\nname: ${this.agent.name}\ncwd: ${this.agent.cwd}`,
           { session_id: this.agent.id, name: this.agent.name, cwd: this.agent.cwd, model: this.agent.model ?? "codex-app-server" },
         );
+      case "intercom_join": {
+        if (args.name === undefined) {
+          if (args.create || args.members !== undefined || args.work !== undefined) throw new Error("Creating or extending a team requires a name");
+          return textToolResult(formatJoinableNamedTeamList(listNamedTeams()));
+        }
+        if (args.members !== undefined && !Array.isArray(args.members)) throw new Error("members must be an array");
+        const sessions = await this.client.listSessions();
+        const members = Array.from((args.members ?? []) as unknown[], (member) => {
+          const id = resolveSessionTarget(sessions, asString(member, "member"));
+          if (!id) throw new Error("Team member is not connected");
+          return id;
+        });
+        const team = await appendNamedTeamMembership({ name: asString(args.name, "name"), selfId: this.agent.id, members, create: args.create === true, ...(args.work === undefined ? {} : { work: asString(args.work, "work") }) });
+        const roster = namedTeamRoster(team, this.agent.id, sessions);
+        return textToolResult(formatNamedTeamRoster(roster), { ok: true, team: team.name, roster });
+      }
       case "intercom_team": {
         const sessions = await this.client.listSessions();
+        const mine = sessionNamedTeams(this.agent.id);
+        const requested = args.team === undefined ? undefined : asString(args.team, "team");
+        const selected = requested ? mine.filter((entry) => entry.name === requested) : mine;
+        if (requested && !selected.length) throw new Error("You do not belong to that team");
+        if (selected.length) {
+          const teams = selected.map((entry) => namedTeamRoster(entry, this.agent.id, sessions));
+          return textToolResult(teams.map(formatNamedTeamRoster).join("\n\n"), { teams });
+        }
         const team = await resolveIntercomTeam({ selfId: this.agent.id, sessions });
         return textToolResult(formatIntercomTeam(team), team as unknown as Record<string, unknown>);
       }
@@ -692,7 +726,8 @@ export class VirtualCodexAgent {
         const to = asString(args.to, "to");
         const message = asString(args.message, "message");
         const sendTo = await this.resolveTarget(to);
-        const result = await this.client.send(sendTo, { text: message });
+        const team = resolveNamedMessageTeam(this.agent.id, sendTo, args.team === undefined ? undefined : asString(args.team, "team"));
+        const result = await this.client.send(sendTo, { text: message, team });
         if (!result.delivered) {
           return textToolResult(`Message to "${to}" was not delivered: ${result.reason ?? "Session may not exist or has disconnected."}`, { ok: false, message_id: result.id, reason: result.reason }, true);
         }
@@ -705,10 +740,11 @@ export class VirtualCodexAgent {
         const message = asString(args.message, "message");
         const timeoutMs = asOptionalPositiveInteger(args.timeout_ms, "timeout_ms") ?? DEFAULT_ASK_TIMEOUT_MS;
         const sendTo = await this.resolveTarget(to);
+        const team = resolveNamedMessageTeam(this.agent.id, sendTo, args.team === undefined ? undefined : asString(args.team, "team"));
         const questionId = randomUUID();
-        const replyPromise = this.waitForToolReply(sendTo, questionId, timeoutMs, signal);
+        const replyPromise = this.waitForToolReply(sendTo, questionId, timeoutMs, signal, team);
         void replyPromise.catch(() => undefined);
-        const result = await this.client.send(sendTo, { messageId: questionId, text: message, expectsReply: true });
+        const result = await this.client.send(sendTo, { messageId: questionId, text: message, expectsReply: true, team });
         if (!result.delivered) {
           this.rejectToolReply(questionId, new Error(result.reason ?? "Session may not exist or has disconnected."));
           return textToolResult(`Message to "${to}" was not delivered: ${result.reason ?? "Session may not exist or has disconnected."}`, { ok: false, message_id: result.id, reason: result.reason }, true);
@@ -748,7 +784,7 @@ export class VirtualCodexAgent {
     return resolveSessionTarget(sessions, to) ?? to;
   }
 
-  private waitForToolReply(from: string, replyTo: string, timeoutMs = DEFAULT_ASK_TIMEOUT_MS, signal?: AbortSignal): Promise<Message> {
+  private waitForToolReply(from: string, replyTo: string, timeoutMs = DEFAULT_ASK_TIMEOUT_MS, signal?: AbortSignal, team?: string): Promise<Message> {
     return new Promise((resolve, reject) => {
       if (signal?.aborted) {
         reject(new Error("intercom_ask cancelled"));
@@ -772,7 +808,7 @@ export class VirtualCodexAgent {
         reject(new Error(`No reply from "${from}" within ${Math.round(timeoutMs / 1000)} seconds`));
       }, timeoutMs);
       signal?.addEventListener("abort", onAbort, { once: true });
-      this.toolReplyWaiters.set(replyTo, { from, resolve, reject, timeout, cleanup });
+      this.toolReplyWaiters.set(replyTo, { from, team, resolve, reject, timeout, cleanup });
     });
   }
 

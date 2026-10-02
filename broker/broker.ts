@@ -240,6 +240,7 @@ function isMessage(value: unknown): value is Message {
     return false;
   }
 
+  if (content.team !== undefined && (typeof content.team !== "string" || !/^[A-Za-z][A-Za-z0-9_-]{0,31}$/.test(content.team))) return false;
   return content.attachments === undefined
     || (
       Array.isArray(content.attachments)

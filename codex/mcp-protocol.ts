@@ -1,5 +1,6 @@
 import type { CodexIntercomRuntime, ToolResult } from "./runtime.ts";
 import { validateAskTimeoutMs } from "../config.ts";
+import { TASK_TEAM_GUIDANCE } from "./team-guidance.ts";
 import type { Attachment } from "../types.ts";
 
 interface JsonRpcRequest {
@@ -32,6 +33,16 @@ function asString(value: unknown, name: string): string {
     throw new Error(`${name} must be a non-empty string`);
   }
   return value;
+}
+
+function optionalString(value: unknown, name: string): string | undefined {
+  return value === undefined ? undefined : asString(value, name);
+}
+
+function memberArray(value: unknown): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw new Error("members must be an array of session names or IDs");
+  return Array.from(value, (member) => asString(member, "member"));
 }
 
 function asBoolean(value: unknown, defaultValue: boolean): boolean {
@@ -85,26 +96,30 @@ export function buildToolDefinitions(runtime: CodexIntercomRuntime): ToolDefinit
     },
     {
       name: "intercom_team",
-      description: "Show your current manager and the live coworkers owned by that manager. No arguments are required.",
-      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      description: "Show all your named task teams, or inspect one by name. Falls back to managed-team discovery.",
+      inputSchema: { type: "object", properties: { team: { type: "string" } }, additionalProperties: false },
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
-      handler: async () => runtime.team(),
+      handler: async (args) => runtime.team(optionalString(args.team, "team")),
     },
     {
       name: "intercom_join",
-      description: "List, join, or create a named intercom team without tmux. Omit name to list joinable teams. Set create=true to create a team and join as manager.",
+      description: "After user approval, create or join a task team. Membership is additive; members lets the manager add connected peers in one call. Omit name to list teams.",
       inputSchema: {
         type: "object",
         properties: {
           name: { type: "string", description: "Team name to join. Omit to list joinable teams." },
           create: { type: "boolean", description: "Create this named team and join as manager. Requires name." },
+          members: { type: "array", items: { type: "string" }, description: "Connected session names or IDs to add; manager only." },
+          work: { type: "string", maxLength: 2000, description: "Task description when creating a team." },
         },
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
       handler: async (args) => runtime.join(
-        typeof args.name === "string" ? args.name : undefined,
+        optionalString(args.name, "name"),
         args.create === true,
+        memberArray(args.members),
+        optionalString(args.work, "work"),
       ),
     },
     {
@@ -152,12 +167,13 @@ export function buildToolDefinitions(runtime: CodexIntercomRuntime): ToolDefinit
           to: { type: "string" },
           message: { type: "string" },
           attachments: attachmentsSchema,
+          team: { type: "string", description: "Task team; required when multiple teams are shared. Omit for ungrouped contact." },
         },
         required: ["to", "message"],
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
-      handler: async (args) => runtime.send(asString(args.to, "to"), asString(args.message, "message"), asAttachmentArray(args.attachments)),
+      handler: async (args) => runtime.send(asString(args.to, "to"), asString(args.message, "message"), asAttachmentArray(args.attachments), undefined, optionalString(args.team, "team")),
     },
     {
       name: "intercom_ask",
@@ -168,6 +184,7 @@ export function buildToolDefinitions(runtime: CodexIntercomRuntime): ToolDefinit
           to: { type: "string" },
           message: { type: "string" },
           attachments: attachmentsSchema,
+          team: { type: "string", description: "Task team; required when multiple teams are shared." },
           timeout_ms: { type: "integer", minimum: 1, maximum: 120000, description: "Maximum time to wait for a reply before returning an error. Use intercom_send plus intercom_pending for longer work." },
         },
         required: ["to", "message"],
@@ -180,6 +197,7 @@ export function buildToolDefinitions(runtime: CodexIntercomRuntime): ToolDefinit
         asAttachmentArray(args.attachments),
         asOptionalPositiveInteger(args.timeout_ms, "timeout_ms"),
         signal,
+        optionalString(args.team, "team"),
       ),
     },
     {
@@ -195,19 +213,22 @@ export function buildToolDefinitions(runtime: CodexIntercomRuntime): ToolDefinit
     },
     {
       name: "intercom_reply",
-      description: "Reply to a pending inbound ask. Use to plus which=oldest/latest when one sender has multiple unresolved asks.",
+      description: "Reply to an inbound ask or ordinary message using askId or contextId from intercom_pending. Inherits the original team; team cannot override it.",
       inputSchema: {
         type: "object",
         properties: {
           message: { type: "string" },
           to: { type: "string", description: "Optional sender/session selector; never a message or thread ID." },
+          askId: { type: "string", description: "Stable receiver-local pending ask selector." },
+          contextId: { type: "string", description: "Exact inbound context selector, including ordinary messages." },
+          team: { type: "string", description: "Must match the original message; omit to inherit." },
           which: { type: "string", enum: ["oldest", "latest"], description: "Select the oldest or latest ask from the chosen sender." },
         },
         required: ["message"],
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
-      handler: async (args) => runtime.reply(asString(args.message, "message"), typeof args.to === "string" ? args.to : undefined, args.which === "oldest" || args.which === "latest" ? args.which : undefined),
+      handler: async (args) => runtime.reply(asString(args.message, "message"), typeof args.to === "string" ? args.to : undefined, args.which === "oldest" || args.which === "latest" ? args.which : undefined, optionalString(args.askId, "askId"), optionalString(args.contextId, "contextId"), optionalString(args.team, "team")),
     },
   ];
 }
@@ -243,7 +264,8 @@ export async function handleMcpRequest(request: JsonRpcRequest, runtime: CodexIn
       return ok(request.id, {
         protocolVersion: "2025-06-18",
         capabilities: { tools: {} },
-        serverInfo: { name: "codex-intercom", version: "0.12.2" },
+        instructions: TASK_TEAM_GUIDANCE,
+        serverInfo: { name: "codex-intercom", version: "0.13.0" },
       });
     case "ping":
       return ok(request.id, {});

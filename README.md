@@ -186,15 +186,26 @@ intercom tools.
 ## Tools
 
 - `intercom_whoami`: show this session's intercom ID, name, cwd, and model.
-- `intercom_team`: show the current manager and live coworkers owned by that manager.
-- `intercom_join`: list, join, or create a named team without tmux (`create: true` joins as manager).
+- `intercom_team({ team? })`: show all named task memberships, inspect one team, or fall back to managed-team discovery.
+- `intercom_join({ name?, create?, members?, work? })`: add task-team membership without leaving earlier teams; managers add connected peers in one call.
 - `intercom_status`: show connection status and pending message counts.
 - `intercom_list`: list local Pi, Codex, Claude Code, and OpenCode sessions in your scope (protocol v4 is same-scope; cross-scope contact requires an exact full session ID).
 - `intercom_set_summary`: publish a short discoverable status.
 - `intercom_send`: send a non-blocking message.
 - `intercom_ask`: send a question and wait for the target's reply.
 - `intercom_pending`: read queued inbound messages and unresolved asks.
-- `intercom_reply`: reply to a pending inbound ask; use `to` plus `which: "oldest" | "latest"` if one sender has multiple unresolved asks.
+- `intercom_reply`: reply to an inbound ask or ordinary message via `askId` or `contextId` from `intercom_pending`; replies inherit the original team. Within one task, `to` plus `which: "oldest" | "latest"` also selects an ask.
+
+### Task teams
+
+When the user delegates to named peers, the agent asks once whether to form a team for this task and waits for approval. Explicit create/join requests are already approval; approved tasks and inbound team messages do not prompt again. Discover the peers, then add everyone in one call:
+
+```typescript
+intercom_join({ name: "launch", create: true, members: ["front", "writer"], work: "Launch page" })
+intercom_send({ to: "front", team: "launch", message: "Implement the header." })
+```
+
+Membership and roles are per task and additive; joining preserves earlier teams and registration scope. Reuse an approved team for the same task and append approved peers as manager. For initial contact without a shared team, omit `team`; unrelated memberships do not block messaging or silently create teams. Multiple shared teams require `team` on sends/asks. Replies retain the original message's team via exact selectors, not a mutable current team. App-server workers also retain the team on automatic replies.
 
 Pending output never exposes protocol message IDs. Keep at most one unresolved `intercom_ask` to the same recipient; the broker rejects a second ask and recommends `intercom_send` for a non-blocking follow-up. Use `intercom_send`—not `intercom_ask`—for assignments and progress/status checkpoints.
 

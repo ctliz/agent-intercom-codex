@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-process.stderr.write("[agent-intercom-build] package=@ctliz/agent-intercom-codex version=0.12.2 target=codex-server sourceSha256=fb36315f414b3f19538f70942c884026e951ee63fb0060970c2c041e21aed32d\n");
+process.stderr.write("[agent-intercom-build] package=@ctliz/agent-intercom-codex version=0.13.0 target=codex-server sourceSha256=04013522326f3042c72f6454a9c79e26d2d1c8de7af57769ed890e50fca514e3\n");
 
 // codex/server.ts
 import readline from "node:readline";
@@ -867,6 +867,7 @@ function isMessage(value) {
   if (typeof content.text !== "string") {
     return false;
   }
+  if (content.team !== void 0 && (typeof content.team !== "string" || !/^[A-Za-z][A-Za-z0-9_-]{0,31}$/.test(content.team))) return false;
   return content.attachments === void 0 || Array.isArray(content.attachments) && content.attachments.every(isAttachment);
 }
 function isSessionInfo(value) {
@@ -1457,6 +1458,7 @@ var IntercomClient = class extends EventEmitter {
       expectsReply: options.expectsReply,
       content: {
         text: options.text,
+        ...options.team === void 0 ? {} : { team: options.team },
         attachments: options.attachments
       }
     };
@@ -2380,18 +2382,16 @@ function parseStoredTeam(value) {
   if (typeof value.createdAt !== "number" || !Number.isSafeInteger(value.createdAt) || value.createdAt <= 0) {
     return void 0;
   }
+  if (value.memberSessionIds !== void 0 && (!Array.isArray(value.memberSessionIds) || !value.memberSessionIds.every((id) => typeof id === "string" && id.trim() === id && id.length > 0 && !/[\u0000-\u001f\u007f]/.test(id)) || new Set(value.memberSessionIds).size !== value.memberSessionIds.length || !value.memberSessionIds.includes(value.managerSessionId))) return void 0;
+  if (value.work !== void 0 && (typeof value.work !== "string" || !value.work.trim() || value.work.length > 2e3)) return void 0;
   return {
     name: value.name,
     scopeId: value.scopeId,
     managerSessionId: value.managerSessionId,
-    createdAt: value.createdAt
+    createdAt: value.createdAt,
+    ...value.memberSessionIds === void 0 ? {} : { memberSessionIds: value.memberSessionIds },
+    ...value.work === void 0 ? {} : { work: value.work }
   };
-}
-function rejectManagedJoin(env = process.env) {
-  if (env.AGENT_INTERCOM_WORKER_ID?.trim() || env.AGENT_INTERCOM_OWNED === "1" || env.AGENT_INTERCOM_TEAM_MANIFEST?.trim()) {
-    return "This session is already a managed member and cannot join another team.";
-  }
-  return void 0;
 }
 function parseTeamName(raw) {
   const name = raw.trim();
@@ -2437,35 +2437,6 @@ function listNamedTeams(agentDir) {
   }
   return teams;
 }
-function findNamedTeam(name, agentDir) {
-  return listNamedTeams(agentDir).find((team) => team.name === name);
-}
-function createNamedTeam(input) {
-  const name = parseTeamName(input.name);
-  const managerSessionId = input.managerSessionId.trim();
-  if (!managerSessionId || managerSessionId !== input.managerSessionId || /[\u0000-\u001f\u007f]/.test(managerSessionId)) {
-    throw genericWriteError();
-  }
-  const existing = listNamedTeams(input.agentDir);
-  if (existing.some((team2) => team2.name === name)) {
-    throw new Error(`A named team called ${name} already exists.`);
-  }
-  const scopeId = (input.generateScope ?? (() => generateNamedTeamScope(existing.map((team2) => team2.scopeId))))();
-  if (!isNamedTeamScope(scopeId) || existing.some((team2) => team2.scopeId === scopeId)) {
-    throw genericWriteError();
-  }
-  const team = {
-    name,
-    scopeId,
-    managerSessionId,
-    createdAt: input.now ?? Date.now()
-  };
-  const dir = getIntercomDirPath(input.agentDir ?? getAgentDirPath());
-  ensureIntercomRuntimeDir(dir);
-  const payload = { version: NAMED_TEAMS_VERSION, teams: [...existing, team] };
-  writeDurableJson(teamsFilePath(input.agentDir), payload);
-  return team;
-}
 function formatJoinableNamedTeamList(teams) {
   if (teams.length === 0) {
     return 'No joinable named teams found.\nCreate one with intercom_join({ name: "billing", create: true }).';
@@ -2483,6 +2454,147 @@ function formatNamedJoinSuccess(input) {
   return `Joined team ${input.team}.
 Role: teammate
 Display name: ${input.name}`;
+}
+
+// codex/named-team-membership.ts
+import { mkdirSync as mkdirSync4, rmSync } from "node:fs";
+import { join as join8 } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
+function namedTeamMemberIds(team) {
+  return team.memberSessionIds ?? [team.managerSessionId];
+}
+function sessionNamedTeams(sessionId, agentDir) {
+  return listNamedTeams(agentDir).filter((team) => namedTeamMemberIds(team).includes(sessionId));
+}
+async function appendNamedTeamMembership(input) {
+  const name = parseTeamName(input.name);
+  const memberIds = [.../* @__PURE__ */ new Set([input.selfId, ...input.members ?? []])];
+  if (memberIds.some((id) => !id || id.trim() !== id || /[\u0000-\u001f\u007f]/.test(id))) {
+    throw new Error("Invalid team member session ID");
+  }
+  if (input.work !== void 0 && (!input.work.trim() || input.work.length > 2e3)) {
+    throw new Error("Work must be a non-empty task description (max 2000 characters)");
+  }
+  const dir = getIntercomDirPath(input.agentDir ?? getAgentDirPath());
+  ensureIntercomRuntimeDir(dir);
+  const lock = join8(dir, "named-teams.lock");
+  const deadline = Date.now() + 5e3;
+  for (; ; ) {
+    try {
+      mkdirSync4(lock, { mode: 448 });
+      break;
+    } catch (error2) {
+      if (error2.code !== "EEXIST") throw error2;
+      if (Date.now() >= deadline) throw new Error("Team registry is busy; retry. If a writer crashed, remove the stale named-teams.lock directory after verifying no writer is active.");
+      await delay(25);
+    }
+  }
+  try {
+    const teams = listNamedTeams(input.agentDir);
+    let team = teams.find((entry) => entry.name === name);
+    if (input.create) {
+      if (team) throw new Error(`A named team called ${name} already exists; join it instead.`);
+      team = { name, scopeId: generateNamedTeamScope(teams.map((entry) => entry.scopeId)), managerSessionId: input.selfId, createdAt: Date.now() };
+      teams.push(team);
+    }
+    if (!team) throw new Error(`Team "${name}" does not exist; create it explicitly.`);
+    if (memberIds.some((id) => id !== input.selfId) && team.managerSessionId !== input.selfId) {
+      throw new Error(`Only the manager of team "${name}" may add other sessions`);
+    }
+    if (input.work !== void 0 && !input.create) {
+      throw new Error("Work is set when creating a team; use a new team for a different task");
+    }
+    const updated = {
+      ...team,
+      memberSessionIds: [.../* @__PURE__ */ new Set([...namedTeamMemberIds(team), ...memberIds])],
+      ...input.work === void 0 ? {} : { work: input.work.trim() }
+    };
+    writeDurableJson(join8(dir, NAMED_TEAMS_FILE), {
+      version: NAMED_TEAMS_VERSION,
+      teams: teams.map((entry) => entry.name === name ? updated : entry)
+    });
+    return updated;
+  } finally {
+    rmSync(lock, { recursive: true });
+  }
+}
+function requireNamedTeamMembers(name, selfId, peerId, agentDir) {
+  const team = listNamedTeams(agentDir).find((entry) => entry.name === name);
+  if (!team) throw new Error(`Unknown team "${name}"`);
+  const members = namedTeamMemberIds(team);
+  if (!members.includes(selfId) || !members.includes(peerId)) {
+    throw new Error(`Both sessions must belong to team "${name}" before messaging`);
+  }
+  return team;
+}
+function resolveNamedMessageTeam(selfId, peerId, requested, agentDir) {
+  if (requested !== void 0) return requireNamedTeamMembers(requested, selfId, peerId, agentDir).name;
+  const mine = sessionNamedTeams(selfId, agentDir);
+  const shared = mine.filter((team) => namedTeamMemberIds(team).includes(peerId));
+  if (shared.length === 1) return shared[0].name;
+  if (shared.length > 1) throw new Error("Multiple shared teams; specify `team` for this task");
+  return void 0;
+}
+function namedTeamRoster(team, selfId, sessions) {
+  return {
+    name: team.name,
+    ...team.work ? { work: team.work } : {},
+    self: { id: selfId, isManager: selfId === team.managerSessionId },
+    manager: { target: team.managerSessionId, connected: sessions.some((entry) => entry.id === team.managerSessionId) },
+    members: namedTeamMemberIds(team).map((id) => ({
+      id,
+      target: id,
+      name: sessions.find((entry) => entry.id === id)?.name,
+      role: id === team.managerSessionId ? "manager" : "member",
+      connected: sessions.some((entry) => entry.id === id)
+    }))
+  };
+}
+function formatNamedTeamRoster(team) {
+  return [
+    `Team: ${team.name}`,
+    ...team.work ? [`Work: ${team.work}`] : [],
+    `You: ${team.self.id}${team.self.isManager ? " [manager]" : ""}`,
+    `Manager: ${team.manager.target}${team.manager.connected ? "" : " [offline]"}`,
+    "Members:",
+    ...team.members.map((member) => `- ${member.name || member.id} (${member.id}) [${member.role}]${member.connected ? "" : " [offline]"}`)
+  ].join("\n");
+}
+
+// codex/reply-context.ts
+function contextId(entry) {
+  return `ctx-${entry.message.id}`;
+}
+function askId(entry) {
+  return `ask-${entry.message.id}`;
+}
+function replyHint(entry) {
+  const team = entry.message.content.team;
+  return `${team ? ` [Team: ${team}]` : ""} [contextId: ${contextId(entry)}]${entry.message.expectsReply ? ` [askId: ${askId(entry)}]` : ""}`;
+}
+function selectReplyContext(entries, asks, input) {
+  if (input.askId && input.contextId) throw new Error("Specify askId or contextId, not both");
+  let target;
+  if (input.askId || input.contextId) {
+    const selected = input.askId ? asks.find((entry) => askId(entry) === input.askId) : entries.find((entry) => contextId(entry) === input.contextId);
+    if (!selected || selected.message.expectsReply && !asks.includes(selected)) throw new Error("Unknown or resolved reply selector; call intercom_pending");
+    if (input.to && selected.from.id !== input.to && selected.from.name?.toLowerCase() !== input.to.toLowerCase()) {
+      throw new Error("Reply sender does not match the selected context");
+    }
+    if (input.which) throw new Error("Do not combine an exact reply selector with which");
+    target = selected;
+  } else {
+    const to = input.to;
+    const candidates = to ? asks.filter((entry) => entry.from.id === to || entry.from.name?.toLowerCase() === to.toLowerCase() || entry.from.id.startsWith(to)) : asks;
+    if (!input.which && new Set(candidates.map((entry) => entry.message.content.team)).size > 1) {
+      throw new Error("Multiple team contexts; specify askId or contextId");
+    }
+    target = selectPendingAsk(asks, input.to, input.which);
+  }
+  if (input.team !== void 0 && input.team !== target.message.content.team) {
+    throw new Error("Reply team must match the original message; omit team to inherit it");
+  }
+  return target;
 }
 
 // codex/runtime.ts
@@ -2522,6 +2634,9 @@ function publicPendingEntry(entry, selector) {
       ...entry.from.parentSessionId ? { parent_session_id: entry.from.parentSessionId } : {},
       ...entry.from.generation ? { generation: entry.from.generation } : {}
     },
+    contextId: contextId(entry),
+    ...entry.message.expectsReply ? { askId: askId(entry) } : {},
+    ...entry.message.content.team ? { team: entry.message.content.team } : {},
     received_at: entry.receivedAt,
     read: entry.read,
     text: entry.message.content.text,
@@ -2702,7 +2817,7 @@ var CodexIntercomRuntime = class {
   }
   scheduleReconnect() {
     if (!this.reconnectEnabled || this.reconnectTimer) return;
-    const delay = this.reconnectDelays[Math.min(this.reconnectAttempt, this.reconnectDelays.length - 1)];
+    const delay2 = this.reconnectDelays[Math.min(this.reconnectAttempt, this.reconnectDelays.length - 1)];
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       void this.connect().then((client) => {
@@ -2714,7 +2829,7 @@ var CodexIntercomRuntime = class {
         this.reconnectAttempt += 1;
         this.scheduleReconnect();
       });
-    }, delay);
+    }, delay2);
     this.reconnectTimer.unref?.();
   }
   clearReconnectTimer() {
@@ -2757,25 +2872,24 @@ var CodexIntercomRuntime = class {
     this.reconnectEnabled = true;
     await this.connect();
   }
-  async join(name, create = false) {
-    const blocked = rejectManagedJoin();
-    if (blocked) return textResult(blocked, { ok: false }, true);
+  async join(name, create = false, members, work) {
     try {
-      if (create) {
-        if (typeof name !== "string" || !name.trim()) {
-          return textResult("Creating a team requires a name.", { ok: false }, true);
-        }
-        const team2 = createNamedTeam({ name: parseTeamName(name), managerSessionId: this.identity.sessionId });
-        await this.switchRuntimeScope(team2.scopeId, team2.managerSessionId);
-        return textResult(formatCreateSuccess({ team: team2.name, name: this.identity.name }), { ok: true, team: team2.name, role: "manager" });
-      }
       if (!name?.trim()) {
+        if (create || members?.length || work !== void 0) throw new Error("Creating or extending a team requires a name");
         return textResult(formatJoinableNamedTeamList(listNamedTeams()));
       }
-      const team = findNamedTeam(parseTeamName(name));
-      if (!team) return textResult("Could not join that team.", { ok: false }, true);
-      await this.switchRuntimeScope(team.scopeId, team.managerSessionId);
-      return textResult(formatNamedJoinSuccess({ team: team.name, name: this.identity.name }), { ok: true, team: team.name, role: "teammate" });
+      const client = await this.connect();
+      const sessions = await client.listSessions();
+      const memberIds = (members ?? []).map((member) => {
+        const id = resolveSessionTarget(sessions, member);
+        if (!id) throw new Error(`Session "${member}" is not connected`);
+        return id;
+      });
+      const team = await appendNamedTeamMembership({ name: parseTeamName(name), selfId: this.identity.sessionId, members: memberIds, create, work });
+      const roster = namedTeamRoster(team, this.identity.sessionId, sessions);
+      const notice = create ? formatCreateSuccess({ team: team.name, name: this.identity.name }) : formatNamedJoinSuccess({ team: team.name, name: this.identity.name });
+      return textResult(`${notice}
+Other team memberships are unchanged.`, { ok: true, team: team.name, role: roster.self.isManager ? "manager" : "member", roster });
     } catch (error2) {
       return textResult(error2 instanceof Error ? error2.message : String(error2), { ok: false }, true);
     }
@@ -2785,7 +2899,7 @@ var CodexIntercomRuntime = class {
     if (waiter) {
       const senderTarget = from.name || from.id;
       const fromMatches = senderTarget.toLowerCase() === waiter.from.toLowerCase() || from.id === waiter.from;
-      if (fromMatches) {
+      if (fromMatches && message.content.team === waiter.team) {
         this.replyWaiters.delete(waiter.replyTo);
         clearTimeout(waiter.timeout);
         waiter.cleanup?.();
@@ -2799,7 +2913,7 @@ var CodexIntercomRuntime = class {
       this.unresolvedAsks.set(message.id, entry);
     }
   }
-  waitForReply(from, replyTo, timeoutMs = getAskTimeoutMs(), signal) {
+  waitForReply(from, replyTo, timeoutMs = getAskTimeoutMs(), signal, team) {
     return new Promise((resolve3, reject) => {
       if (signal?.aborted) {
         reject(new Error("intercom_ask cancelled"));
@@ -2823,7 +2937,7 @@ var CodexIntercomRuntime = class {
         reject(new Error(`No reply from "${from}" within ${Math.round(timeoutMs / 1e3)} seconds`));
       }, timeoutMs);
       signal?.addEventListener("abort", onAbort, { once: true });
-      this.replyWaiters.set(replyTo, { from, replyTo, resolve: resolve3, reject, timeout, cleanup });
+      this.replyWaiters.set(replyTo, { from, replyTo, team, resolve: resolve3, reject, timeout, cleanup });
     });
   }
   async resolveTarget(to) {
@@ -2841,9 +2955,16 @@ cwd: ${this.identity.cwd}`,
       { session_id: sessionId, name: this.identity.name, cwd: this.identity.cwd, model: this.identity.model }
     );
   }
-  async team() {
+  async team(name) {
     const client = await this.connect();
     const sessions = await client.listSessions();
+    const mine = sessionNamedTeams(this.identity.sessionId);
+    const selected = name ? mine.filter((entry) => entry.name === name) : mine;
+    if (name && !selected.length) return textResult(`You do not belong to team "${name}"`, { ok: false }, true);
+    if (selected.length) {
+      const teams = selected.map((entry) => namedTeamRoster(entry, this.identity.sessionId, sessions));
+      return textResult(teams.map(formatNamedTeamRoster).join("\n\n"), { teams });
+    }
     const team = await resolveIntercomTeam({ selfId: client.sessionId ?? this.identity.sessionId, sessions });
     return textResult(formatIntercomTeam(team), team);
   }
@@ -2884,28 +3005,34 @@ Pending asks: ${this.unresolvedAsks.size}`,
     client.updatePresence({ status: summary.trim() || "idle" });
     return textResult("Summary updated.", { ok: true, summary });
   }
-  async send(to, message, attachments, replyTo) {
+  async send(to, message, attachments, replyTo, requestedTeam) {
     const client = await this.connect();
     const sendTo = await this.resolveTarget(to);
-    const result = await client.send(sendTo, { text: message, attachments, replyTo });
+    const source = replyTo ? this.unread.find((entry) => entry.message.id === replyTo && entry.from.id === sendTo) : void 0;
+    if (replyTo && !source) throw new Error("Unknown inbound reply context");
+    if (source && requestedTeam !== void 0 && requestedTeam !== source.message.content.team) throw new Error("Reply team must match the original message");
+    const team = source ? source.message.content.team : resolveNamedMessageTeam(this.identity.sessionId, sendTo, requestedTeam);
+    const result = await client.send(sendTo, { text: message, attachments, replyTo: source?.message.expectsReply ? replyTo : void 0, team });
     if (!result.delivered) {
       return textResult(`Message to "${to}" was not delivered: ${result.reason ?? "Session may not exist or has disconnected."}`, { ok: false, message_id: result.id, reason: result.reason }, true);
     }
     if (replyTo) this.unresolvedAsks.delete(replyTo);
     return textResult(`Message sent to ${to}.`, { ok: true, message_id: result.id, to });
   }
-  async ask(to, message, attachments, timeoutMs = getAskTimeoutMs(), signal) {
+  async ask(to, message, attachments, timeoutMs = getAskTimeoutMs(), signal, requestedTeam) {
     const client = await this.connect();
     const sendTo = await this.resolveTarget(to);
+    const team = resolveNamedMessageTeam(this.identity.sessionId, sendTo, requestedTeam);
     const questionId = randomUUID4();
-    const replyPromise = this.waitForReply(sendTo, questionId, timeoutMs, signal);
+    const replyPromise = this.waitForReply(sendTo, questionId, timeoutMs, signal, team);
     void replyPromise.catch(() => void 0);
     try {
       const result = await client.send(sendTo, {
         messageId: questionId,
         text: message,
         attachments,
-        expectsReply: true
+        expectsReply: true,
+        team
       });
       if (!result.delivered) {
         this.replyWaiters.get(questionId)?.reject(new Error(result.reason ?? "Session may not exist or has disconnected."));
@@ -2929,12 +3056,12 @@ ${replyText}`, { ok: true, message_id: result.id, reply });
     }
     const pendingAsks = Array.from(this.unresolvedAsks.values()).sort((a, b) => a.receivedAt - b.receivedAt);
     const lines = [
-      unreadMessages.length ? unreadMessages.map((entry) => `- ${formatSessionDisplay(entry.from)}: ${entry.message.content.text}${formatAttachments(entry.message.content.attachments)}`).join("\n") : "No unread messages.",
+      unreadMessages.length ? unreadMessages.map((entry) => `- ${formatSessionDisplay(entry.from)}${replyHint(entry)}: ${entry.message.content.text}${formatAttachments(entry.message.content.attachments)}`).join("\n") : "No unread messages.",
       pendingAsks.length ? `
 Pending asks:
 ${pendingAsks.map((entry) => {
         const selector = pendingSelector(pendingAsks, entry);
-        return `- ${formatSessionDisplay(entry.from)}${selector ? ` [${selector}]` : ""}: ${entry.message.content.text}`;
+        return `- ${formatSessionDisplay(entry.from)}${replyHint(entry)}${selector ? ` [${selector}]` : ""}: ${entry.message.content.text}`;
       }).join("\n")}` : ""
     ].filter(Boolean);
     return textResult(lines.join("\n"), {
@@ -2942,10 +3069,10 @@ ${pendingAsks.map((entry) => {
       pending_asks: pendingAsks.map((entry) => publicPendingEntry(entry, pendingSelector(pendingAsks, entry)))
     });
   }
-  async reply(message, to, which) {
+  async reply(message, to, which, askId2, contextId2, team) {
     let target;
     try {
-      target = selectPendingAsk(Array.from(this.unresolvedAsks.values()), to, which);
+      target = selectReplyContext(this.unread, Array.from(this.unresolvedAsks.values()), { to, which, askId: askId2, contextId: contextId2, team });
     } catch (error2) {
       return textResult(error2 instanceof Error ? error2.message : String(error2), { ok: false }, true);
     }
@@ -2957,6 +3084,15 @@ ${pendingAsks.map((entry) => {
   }
 };
 
+// codex/team-guidance.ts
+var TASK_TEAM_GUIDANCE = `Intercom task-team rules:
+- When the user delegates to named peers and this task has no approved team, ask once whether to form a team with you and those peers. Wait for approval before creating a team or adding peers. An explicit create/join request is approval; never ask again for an approved task or inbound team message.
+- After approval, discover the connected peers, then intercom_join({ name: "launch", create: true, members: ["front", "writer"], work: "Current task" }) adds everyone in one call. Do not ask the user to join each terminal manually.
+- Membership is additive: joining another team preserves previous teams. Reuse the approved team for the same task; a different task may need a different team.
+- Initial contact without a shared team is allowed: omit team for an ungrouped direct message. Unrelated team memberships must not prevent contact or silently create teams.
+- Include team on task sends/asks, especially when peers share multiple teams. Replies inherit the original message's team via askId or contextId from intercom_pending; never override it using a current team or mix contexts from different tasks.
+- Use intercom_send for assignments, progress/status requests, notifications and follow-ups. Use intercom_ask only when your next step genuinely depends on the answer; keep only one unresolved ask per recipient.`;
+
 // codex/mcp-protocol.ts
 var inflightToolCalls = /* @__PURE__ */ new Map();
 function asString(value, name) {
@@ -2964,6 +3100,14 @@ function asString(value, name) {
     throw new Error(`${name} must be a non-empty string`);
   }
   return value;
+}
+function optionalString(value, name) {
+  return value === void 0 ? void 0 : asString(value, name);
+}
+function memberArray(value) {
+  if (value === void 0) return void 0;
+  if (!Array.isArray(value)) throw new Error("members must be an array of session names or IDs");
+  return Array.from(value, (member) => asString(member, "member"));
 }
 function asBoolean(value, defaultValue) {
   return typeof value === "boolean" ? value : defaultValue;
@@ -3012,26 +3156,30 @@ function buildToolDefinitions(runtime2) {
     },
     {
       name: "intercom_team",
-      description: "Show your current manager and the live coworkers owned by that manager. No arguments are required.",
-      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      description: "Show all your named task teams, or inspect one by name. Falls back to managed-team discovery.",
+      inputSchema: { type: "object", properties: { team: { type: "string" } }, additionalProperties: false },
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
-      handler: async () => runtime2.team()
+      handler: async (args) => runtime2.team(optionalString(args.team, "team"))
     },
     {
       name: "intercom_join",
-      description: "List, join, or create a named intercom team without tmux. Omit name to list joinable teams. Set create=true to create a team and join as manager.",
+      description: "After user approval, create or join a task team. Membership is additive; members lets the manager add connected peers in one call. Omit name to list teams.",
       inputSchema: {
         type: "object",
         properties: {
           name: { type: "string", description: "Team name to join. Omit to list joinable teams." },
-          create: { type: "boolean", description: "Create this named team and join as manager. Requires name." }
+          create: { type: "boolean", description: "Create this named team and join as manager. Requires name." },
+          members: { type: "array", items: { type: "string" }, description: "Connected session names or IDs to add; manager only." },
+          work: { type: "string", maxLength: 2e3, description: "Task description when creating a team." }
         },
         additionalProperties: false
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
       handler: async (args) => runtime2.join(
-        typeof args.name === "string" ? args.name : void 0,
-        args.create === true
+        optionalString(args.name, "name"),
+        args.create === true,
+        memberArray(args.members),
+        optionalString(args.work, "work")
       )
     },
     {
@@ -3078,13 +3226,14 @@ function buildToolDefinitions(runtime2) {
         properties: {
           to: { type: "string" },
           message: { type: "string" },
-          attachments: attachmentsSchema
+          attachments: attachmentsSchema,
+          team: { type: "string", description: "Task team; required when multiple teams are shared. Omit for ungrouped contact." }
         },
         required: ["to", "message"],
         additionalProperties: false
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
-      handler: async (args) => runtime2.send(asString(args.to, "to"), asString(args.message, "message"), asAttachmentArray(args.attachments))
+      handler: async (args) => runtime2.send(asString(args.to, "to"), asString(args.message, "message"), asAttachmentArray(args.attachments), void 0, optionalString(args.team, "team"))
     },
     {
       name: "intercom_ask",
@@ -3095,6 +3244,7 @@ function buildToolDefinitions(runtime2) {
           to: { type: "string" },
           message: { type: "string" },
           attachments: attachmentsSchema,
+          team: { type: "string", description: "Task team; required when multiple teams are shared." },
           timeout_ms: { type: "integer", minimum: 1, maximum: 12e4, description: "Maximum time to wait for a reply before returning an error. Use intercom_send plus intercom_pending for longer work." }
         },
         required: ["to", "message"],
@@ -3106,7 +3256,8 @@ function buildToolDefinitions(runtime2) {
         asString(args.message, "message"),
         asAttachmentArray(args.attachments),
         asOptionalPositiveInteger(args.timeout_ms, "timeout_ms"),
-        signal
+        signal,
+        optionalString(args.team, "team")
       )
     },
     {
@@ -3122,19 +3273,22 @@ function buildToolDefinitions(runtime2) {
     },
     {
       name: "intercom_reply",
-      description: "Reply to a pending inbound ask. Use to plus which=oldest/latest when one sender has multiple unresolved asks.",
+      description: "Reply to an inbound ask or ordinary message using askId or contextId from intercom_pending. Inherits the original team; team cannot override it.",
       inputSchema: {
         type: "object",
         properties: {
           message: { type: "string" },
           to: { type: "string", description: "Optional sender/session selector; never a message or thread ID." },
+          askId: { type: "string", description: "Stable receiver-local pending ask selector." },
+          contextId: { type: "string", description: "Exact inbound context selector, including ordinary messages." },
+          team: { type: "string", description: "Must match the original message; omit to inherit." },
           which: { type: "string", enum: ["oldest", "latest"], description: "Select the oldest or latest ask from the chosen sender." }
         },
         required: ["message"],
         additionalProperties: false
       },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
-      handler: async (args) => runtime2.reply(asString(args.message, "message"), typeof args.to === "string" ? args.to : void 0, args.which === "oldest" || args.which === "latest" ? args.which : void 0)
+      handler: async (args) => runtime2.reply(asString(args.message, "message"), typeof args.to === "string" ? args.to : void 0, args.which === "oldest" || args.which === "latest" ? args.which : void 0, optionalString(args.askId, "askId"), optionalString(args.contextId, "contextId"), optionalString(args.team, "team"))
     }
   ];
 }
@@ -3164,7 +3318,8 @@ async function handleMcpRequest(request, runtime2) {
       return ok(request.id, {
         protocolVersion: "2025-06-18",
         capabilities: { tools: {} },
-        serverInfo: { name: "codex-intercom", version: "0.12.2" }
+        instructions: TASK_TEAM_GUIDANCE,
+        serverInfo: { name: "codex-intercom", version: "0.13.0" }
       });
     case "ping":
       return ok(request.id, {});

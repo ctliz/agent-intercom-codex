@@ -1,4 +1,4 @@
-process.stderr.write("[agent-intercom-build] package=@ctliz/agent-intercom-codex version=0.12.2 target=broker sourceSha256=fb36315f414b3f19538f70942c884026e951ee63fb0060970c2c041e21aed32d\n");
+process.stderr.write("[agent-intercom-build] package=@ctliz/agent-intercom-codex version=0.13.0 target=broker sourceSha256=04013522326f3042c72f6454a9c79e26d2d1c8de7af57769ed890e50fca514e3\n");
 
 // broker/broker.ts
 import net from "net";
@@ -1291,6 +1291,7 @@ function isMessage(value) {
   if (typeof content.text !== "string" || Buffer.byteLength(content.text, "utf-8") > MAX_MESSAGE_TEXT_BYTES) {
     return false;
   }
+  if (content.team !== void 0 && (typeof content.team !== "string" || !/^[A-Za-z][A-Za-z0-9_-]{0,31}$/.test(content.team))) return false;
   return content.attachments === void 0 || Array.isArray(content.attachments) && content.attachments.length <= MAX_ATTACHMENTS && content.attachments.every(isAttachment);
 }
 function isSessionId(value) {

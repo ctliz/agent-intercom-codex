@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-process.stderr.write("[agent-intercom-build] package=@ctliz/agent-intercom-codex version=0.12.2 target=bridge-daemon sourceSha256=fb36315f414b3f19538f70942c884026e951ee63fb0060970c2c041e21aed32d\n");
+process.stderr.write("[agent-intercom-build] package=@ctliz/agent-intercom-codex version=0.13.0 target=bridge-daemon sourceSha256=04013522326f3042c72f6454a9c79e26d2d1c8de7af57769ed890e50fca514e3\n");
 
 // codex/bridge-daemon.ts
 import { once } from "node:events";
@@ -1566,6 +1566,7 @@ function isMessage(value) {
   if (typeof content.text !== "string") {
     return false;
   }
+  if (content.team !== void 0 && (typeof content.team !== "string" || !/^[A-Za-z][A-Za-z0-9_-]{0,31}$/.test(content.team))) return false;
   return content.attachments === void 0 || Array.isArray(content.attachments) && content.attachments.every(isAttachment);
 }
 function isSessionInfo(value) {
@@ -2156,6 +2157,7 @@ var IntercomClient = class extends EventEmitter2 {
       expectsReply: options.expectsReply,
       content: {
         text: options.text,
+        ...options.team === void 0 ? {} : { team: options.team },
         attachments: options.attachments
       }
     };
@@ -3064,6 +3066,213 @@ function formatIntercomTeam(team) {
   return lines.join("\n");
 }
 
+// codex/named-teams.ts
+import { randomBytes as randomBytes2 } from "node:crypto";
+import { readFileSync as readFileSync8 } from "node:fs";
+import { join as join8 } from "node:path";
+var NAMED_TEAMS_FILE = "named-teams.json";
+var NAMED_TEAMS_VERSION = 1;
+var NAMED_TEAM_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_-]{0,31}$/;
+function isNamedTeamScope(value) {
+  if (value.length !== 48) return false;
+  for (const char of value) {
+    if (!(char >= "0" && char <= "9" || char >= "a" && char <= "f")) return false;
+  }
+  return true;
+}
+function teamsFilePath(agentDir) {
+  return join8(getIntercomDirPath(agentDir ?? getAgentDirPath()), NAMED_TEAMS_FILE);
+}
+function genericReadError() {
+  return new Error("Could not read the local named-team list.");
+}
+function genericWriteError() {
+  return new Error("Could not create that named team.");
+}
+function isPlainObject(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function parseStoredTeam(value) {
+  if (!isPlainObject(value)) return void 0;
+  if (typeof value.name !== "string" || !NAMED_TEAM_NAME_PATTERN.test(value.name)) return void 0;
+  if (typeof value.scopeId !== "string" || !isNamedTeamScope(value.scopeId)) return void 0;
+  if (typeof value.managerSessionId !== "string" || !value.managerSessionId.trim()) return void 0;
+  if (value.managerSessionId !== value.managerSessionId.trim() || /[\u0000-\u001f\u007f]/.test(value.managerSessionId)) {
+    return void 0;
+  }
+  if (typeof value.createdAt !== "number" || !Number.isSafeInteger(value.createdAt) || value.createdAt <= 0) {
+    return void 0;
+  }
+  if (value.memberSessionIds !== void 0 && (!Array.isArray(value.memberSessionIds) || !value.memberSessionIds.every((id) => typeof id === "string" && id.trim() === id && id.length > 0 && !/[\u0000-\u001f\u007f]/.test(id)) || new Set(value.memberSessionIds).size !== value.memberSessionIds.length || !value.memberSessionIds.includes(value.managerSessionId))) return void 0;
+  if (value.work !== void 0 && (typeof value.work !== "string" || !value.work.trim() || value.work.length > 2e3)) return void 0;
+  return {
+    name: value.name,
+    scopeId: value.scopeId,
+    managerSessionId: value.managerSessionId,
+    createdAt: value.createdAt,
+    ...value.memberSessionIds === void 0 ? {} : { memberSessionIds: value.memberSessionIds },
+    ...value.work === void 0 ? {} : { work: value.work }
+  };
+}
+function parseTeamName(raw) {
+  const name = raw.trim();
+  if (!name || name.includes(" ") || !NAMED_TEAM_NAME_PATTERN.test(name)) {
+    throw new Error("Team names start with a letter and may include letters, numbers, hyphens, or underscores (max 32).");
+  }
+  return name;
+}
+function generateNamedTeamScope(existing = []) {
+  const taken = new Set(existing);
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const scopeId = randomBytes2(24).toString("hex");
+    if (!taken.has(scopeId)) return scopeId;
+  }
+  throw genericWriteError();
+}
+function listNamedTeams(agentDir) {
+  let raw;
+  try {
+    raw = readFileSync8(teamsFilePath(agentDir), "utf8");
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return [];
+    throw genericReadError();
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw genericReadError();
+  }
+  if (!isPlainObject(parsed) || parsed.version !== NAMED_TEAMS_VERSION || !Array.isArray(parsed.teams)) {
+    throw genericReadError();
+  }
+  const teams = [];
+  const names = /* @__PURE__ */ new Set();
+  const scopes = /* @__PURE__ */ new Set();
+  for (const entry of parsed.teams) {
+    const team = parseStoredTeam(entry);
+    if (!team || names.has(team.name) || scopes.has(team.scopeId)) throw genericReadError();
+    names.add(team.name);
+    scopes.add(team.scopeId);
+    teams.push(team);
+  }
+  return teams;
+}
+function formatJoinableNamedTeamList(teams) {
+  if (teams.length === 0) {
+    return 'No joinable named teams found.\nCreate one with intercom_join({ name: "billing", create: true }).';
+  }
+  return [
+    "Joinable named teams:",
+    ...teams.map((team, index) => `  ${index + 1}) ${team.name}`)
+  ].join("\n");
+}
+
+// codex/named-team-membership.ts
+import { mkdirSync as mkdirSync5, rmSync } from "node:fs";
+import { join as join9 } from "node:path";
+import { setTimeout as delay2 } from "node:timers/promises";
+function namedTeamMemberIds(team) {
+  return team.memberSessionIds ?? [team.managerSessionId];
+}
+function sessionNamedTeams(sessionId, agentDir) {
+  return listNamedTeams(agentDir).filter((team) => namedTeamMemberIds(team).includes(sessionId));
+}
+async function appendNamedTeamMembership(input) {
+  const name = parseTeamName(input.name);
+  const memberIds = [.../* @__PURE__ */ new Set([input.selfId, ...input.members ?? []])];
+  if (memberIds.some((id) => !id || id.trim() !== id || /[\u0000-\u001f\u007f]/.test(id))) {
+    throw new Error("Invalid team member session ID");
+  }
+  if (input.work !== void 0 && (!input.work.trim() || input.work.length > 2e3)) {
+    throw new Error("Work must be a non-empty task description (max 2000 characters)");
+  }
+  const dir = getIntercomDirPath(input.agentDir ?? getAgentDirPath());
+  ensureIntercomRuntimeDir(dir);
+  const lock = join9(dir, "named-teams.lock");
+  const deadline = Date.now() + 5e3;
+  for (; ; ) {
+    try {
+      mkdirSync5(lock, { mode: 448 });
+      break;
+    } catch (error) {
+      if (error.code !== "EEXIST") throw error;
+      if (Date.now() >= deadline) throw new Error("Team registry is busy; retry. If a writer crashed, remove the stale named-teams.lock directory after verifying no writer is active.");
+      await delay2(25);
+    }
+  }
+  try {
+    const teams = listNamedTeams(input.agentDir);
+    let team = teams.find((entry) => entry.name === name);
+    if (input.create) {
+      if (team) throw new Error(`A named team called ${name} already exists; join it instead.`);
+      team = { name, scopeId: generateNamedTeamScope(teams.map((entry) => entry.scopeId)), managerSessionId: input.selfId, createdAt: Date.now() };
+      teams.push(team);
+    }
+    if (!team) throw new Error(`Team "${name}" does not exist; create it explicitly.`);
+    if (memberIds.some((id) => id !== input.selfId) && team.managerSessionId !== input.selfId) {
+      throw new Error(`Only the manager of team "${name}" may add other sessions`);
+    }
+    if (input.work !== void 0 && !input.create) {
+      throw new Error("Work is set when creating a team; use a new team for a different task");
+    }
+    const updated = {
+      ...team,
+      memberSessionIds: [.../* @__PURE__ */ new Set([...namedTeamMemberIds(team), ...memberIds])],
+      ...input.work === void 0 ? {} : { work: input.work.trim() }
+    };
+    writeDurableJson(join9(dir, NAMED_TEAMS_FILE), {
+      version: NAMED_TEAMS_VERSION,
+      teams: teams.map((entry) => entry.name === name ? updated : entry)
+    });
+    return updated;
+  } finally {
+    rmSync(lock, { recursive: true });
+  }
+}
+function requireNamedTeamMembers(name, selfId, peerId, agentDir) {
+  const team = listNamedTeams(agentDir).find((entry) => entry.name === name);
+  if (!team) throw new Error(`Unknown team "${name}"`);
+  const members = namedTeamMemberIds(team);
+  if (!members.includes(selfId) || !members.includes(peerId)) {
+    throw new Error(`Both sessions must belong to team "${name}" before messaging`);
+  }
+  return team;
+}
+function resolveNamedMessageTeam(selfId, peerId, requested, agentDir) {
+  if (requested !== void 0) return requireNamedTeamMembers(requested, selfId, peerId, agentDir).name;
+  const mine = sessionNamedTeams(selfId, agentDir);
+  const shared = mine.filter((team) => namedTeamMemberIds(team).includes(peerId));
+  if (shared.length === 1) return shared[0].name;
+  if (shared.length > 1) throw new Error("Multiple shared teams; specify `team` for this task");
+  return void 0;
+}
+function namedTeamRoster(team, selfId, sessions) {
+  return {
+    name: team.name,
+    ...team.work ? { work: team.work } : {},
+    self: { id: selfId, isManager: selfId === team.managerSessionId },
+    manager: { target: team.managerSessionId, connected: sessions.some((entry) => entry.id === team.managerSessionId) },
+    members: namedTeamMemberIds(team).map((id) => ({
+      id,
+      target: id,
+      name: sessions.find((entry) => entry.id === id)?.name,
+      role: id === team.managerSessionId ? "manager" : "member",
+      connected: sessions.some((entry) => entry.id === id)
+    }))
+  };
+}
+function formatNamedTeamRoster(team) {
+  return [
+    `Team: ${team.name}`,
+    ...team.work ? [`Work: ${team.work}`] : [],
+    `You: ${team.self.id}${team.self.isManager ? " [manager]" : ""}`,
+    `Manager: ${team.manager.target}${team.manager.connected ? "" : " [offline]"}`,
+    "Members:",
+    ...team.members.map((member) => `- ${member.name || member.id} (${member.id}) [${member.role}]${member.connected ? "" : " [offline]"}`)
+  ].join("\n");
+}
+
 // codex/runtime.ts
 function formatAttachments(attachments) {
   if (!attachments?.length) return "";
@@ -3119,10 +3328,20 @@ function formatSessionList(sessions, currentSessionId, currentCwd) {
   }).join("\n");
 }
 
+// codex/team-guidance.ts
+var TASK_TEAM_GUIDANCE = `Intercom task-team rules:
+- When the user delegates to named peers and this task has no approved team, ask once whether to form a team with you and those peers. Wait for approval before creating a team or adding peers. An explicit create/join request is approval; never ask again for an approved task or inbound team message.
+- After approval, discover the connected peers, then intercom_join({ name: "launch", create: true, members: ["front", "writer"], work: "Current task" }) adds everyone in one call. Do not ask the user to join each terminal manually.
+- Membership is additive: joining another team preserves previous teams. Reuse the approved team for the same task; a different task may need a different team.
+- Initial contact without a shared team is allowed: omit team for an ungrouped direct message. Unrelated team memberships must not prevent contact or silently create teams.
+- Include team on task sends/asks, especially when peers share multiple teams. Replies inherit the original message's team via askId or contextId from intercom_pending; never override it using a current team or mix contexts from different tasks.
+- Use intercom_send for assignments, progress/status requests, notifications and follow-ups. Use intercom_ask only when your next step genuinely depends on the answer; keep only one unresolved ask per recipient.`;
+
 // codex/bridge-daemon.ts
 var APPROVED_INTERCOM_TOOLS = /* @__PURE__ */ new Set([
   "intercom_whoami",
   "intercom_team",
+  "intercom_join",
   "intercom_status",
   "intercom_list",
   "intercom_set_summary",
@@ -3156,6 +3375,7 @@ ${agent.instructions}` : "";
   return [
     `Intercom message for ${agent.name}.`,
     `From: ${formatSessionDisplay(from)} (${from.id})`,
+    ...message.content.team ? [`[Team: ${message.content.team}]`] : [],
     `Message id: ${message.id}`,
     "",
     message.content.text,
@@ -3251,7 +3471,7 @@ function intercomSendFromArgs(rawArgs) {
   } catch {
     return null;
   }
-  return typeof args.to === "string" && typeof args.message === "string" ? { to: args.to, message: args.message } : null;
+  return typeof args.to === "string" && typeof args.message === "string" ? { to: args.to, message: args.message, ...typeof args.team === "string" ? { team: args.team } : {} } : null;
 }
 function getCompletedIntercomSend(params) {
   if (!params || typeof params !== "object") return null;
@@ -3279,7 +3499,7 @@ function asOptionalPositiveInteger(value, name) {
   return validateAskTimeoutMs(value, name);
 }
 function normalizeToolName(name) {
-  const mcpMatch = name.match(/(?:^|__|\.)intercom_(whoami|status|list|set_summary|send|ask|pending|reply)$/);
+  const mcpMatch = name.match(/(?:^|__|\.)intercom_(whoami|team|join|status|list|set_summary|send|ask|pending|reply)$/);
   if (mcpMatch) return `intercom_${mcpMatch[1]}`;
   return name;
 }
@@ -3402,7 +3622,7 @@ var VirtualCodexAgent = class {
   }
   scheduleReconnect() {
     if (!this.reconnectEnabled || this.reconnectTimer) return;
-    const delay2 = this.reconnectDelays[Math.min(this.reconnectAttempt, this.reconnectDelays.length - 1)];
+    const delay3 = this.reconnectDelays[Math.min(this.reconnectAttempt, this.reconnectDelays.length - 1)];
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       void this.connectIntercom().then(() => {
@@ -3416,7 +3636,7 @@ var VirtualCodexAgent = class {
 `);
         this.scheduleReconnect();
       });
-    }, delay2);
+    }, delay3);
     this.reconnectTimer.unref?.();
   }
   clearReconnectTimer() {
@@ -3534,7 +3754,7 @@ var VirtualCodexAgent = class {
       approvalPolicy: bridgeAgentApprovalPolicy(this.agent),
       sandbox,
       serviceName: "codex-intercom",
-      developerInstructions: this.agent.instructions ?? null,
+      developerInstructions: [this.agent.instructions, TASK_TEAM_GUIDANCE].filter(Boolean).join("\n\n"),
       threadSource: "cli"
     });
     this.threadId = getThreadId(result);
@@ -3547,7 +3767,7 @@ var VirtualCodexAgent = class {
   routeMessage(from, message) {
     const toolWaiter = this.toolReplyWaiters.get(message.replyTo ?? "");
     if (toolWaiter) {
-      if (from.id === toolWaiter.from) {
+      if (from.id === toolWaiter.from && message.content.team === toolWaiter.team) {
         this.toolReplyWaiters.delete(message.replyTo ?? "");
         clearTimeout(toolWaiter.timeout);
         toolWaiter.cleanup?.();
@@ -3593,7 +3813,7 @@ var VirtualCodexAgent = class {
     this.waiters.delete(turnId);
     const reply = this.finalMessages.get(turnId)?.trim() || "Codex turn completed without a final message.";
     for (const waiter of waiters) {
-      await this.client.send(waiter.from.id, { text: reply, replyTo: waiter.message.id }).catch((error) => {
+      await this.client.send(waiter.from.id, { text: reply, replyTo: waiter.message.id, team: waiter.message.content.team }).catch((error) => {
         process.stderr.write(`reply failed for ${this.agent.id}: ${error instanceof Error ? error.message : String(error)}
 `);
       });
@@ -3605,12 +3825,16 @@ var VirtualCodexAgent = class {
     const lowerTo = send.to.toLowerCase();
     const remaining = [];
     for (const waiter of waiters) {
+      if (send.team !== void 0 && send.team !== waiter.message.content.team) {
+        remaining.push(waiter);
+        continue;
+      }
       const matchesSender = send.to === waiter.from.id || waiter.from.id.startsWith(send.to) || waiter.from.name?.toLowerCase() === lowerTo;
       if (!matchesSender) {
         remaining.push(waiter);
         continue;
       }
-      await this.client.send(waiter.from.id, { text: send.message, replyTo: waiter.message.id }).catch((error) => {
+      await this.client.send(waiter.from.id, { text: send.message, replyTo: waiter.message.id, team: waiter.message.content.team }).catch((error) => {
         remaining.push(waiter);
         process.stderr.write(`reply failed for ${this.agent.id}: ${error instanceof Error ? error.message : String(error)}
 `);
@@ -3675,8 +3899,32 @@ name: ${this.agent.name}
 cwd: ${this.agent.cwd}`,
           { session_id: this.agent.id, name: this.agent.name, cwd: this.agent.cwd, model: this.agent.model ?? "codex-app-server" }
         );
+      case "intercom_join": {
+        if (args.name === void 0) {
+          if (args.create || args.members !== void 0 || args.work !== void 0) throw new Error("Creating or extending a team requires a name");
+          return textToolResult(formatJoinableNamedTeamList(listNamedTeams()));
+        }
+        if (args.members !== void 0 && !Array.isArray(args.members)) throw new Error("members must be an array");
+        const sessions = await this.client.listSessions();
+        const members = Array.from(args.members ?? [], (member) => {
+          const id = resolveSessionTarget(sessions, asString(member, "member"));
+          if (!id) throw new Error("Team member is not connected");
+          return id;
+        });
+        const team = await appendNamedTeamMembership({ name: asString(args.name, "name"), selfId: this.agent.id, members, create: args.create === true, ...args.work === void 0 ? {} : { work: asString(args.work, "work") } });
+        const roster = namedTeamRoster(team, this.agent.id, sessions);
+        return textToolResult(formatNamedTeamRoster(roster), { ok: true, team: team.name, roster });
+      }
       case "intercom_team": {
         const sessions = await this.client.listSessions();
+        const mine = sessionNamedTeams(this.agent.id);
+        const requested = args.team === void 0 ? void 0 : asString(args.team, "team");
+        const selected = requested ? mine.filter((entry) => entry.name === requested) : mine;
+        if (requested && !selected.length) throw new Error("You do not belong to that team");
+        if (selected.length) {
+          const teams = selected.map((entry) => namedTeamRoster(entry, this.agent.id, sessions));
+          return textToolResult(teams.map(formatNamedTeamRoster).join("\n\n"), { teams });
+        }
         const team = await resolveIntercomTeam({ selfId: this.agent.id, sessions });
         return textToolResult(formatIntercomTeam(team), team);
       }
@@ -3705,7 +3953,8 @@ Active sessions: ${sessions.length}`,
         const to = asString(args.to, "to");
         const message = asString(args.message, "message");
         const sendTo = await this.resolveTarget(to);
-        const result = await this.client.send(sendTo, { text: message });
+        const team = resolveNamedMessageTeam(this.agent.id, sendTo, args.team === void 0 ? void 0 : asString(args.team, "team"));
+        const result = await this.client.send(sendTo, { text: message, team });
         if (!result.delivered) {
           return textToolResult(`Message to "${to}" was not delivered: ${result.reason ?? "Session may not exist or has disconnected."}`, { ok: false, message_id: result.id, reason: result.reason }, true);
         }
@@ -3718,10 +3967,11 @@ Active sessions: ${sessions.length}`,
         const message = asString(args.message, "message");
         const timeoutMs = asOptionalPositiveInteger(args.timeout_ms, "timeout_ms") ?? DEFAULT_ASK_TIMEOUT_MS;
         const sendTo = await this.resolveTarget(to);
+        const team = resolveNamedMessageTeam(this.agent.id, sendTo, args.team === void 0 ? void 0 : asString(args.team, "team"));
         const questionId = randomUUID4();
-        const replyPromise = this.waitForToolReply(sendTo, questionId, timeoutMs, signal);
+        const replyPromise = this.waitForToolReply(sendTo, questionId, timeoutMs, signal, team);
         void replyPromise.catch(() => void 0);
-        const result = await this.client.send(sendTo, { messageId: questionId, text: message, expectsReply: true });
+        const result = await this.client.send(sendTo, { messageId: questionId, text: message, expectsReply: true, team });
         if (!result.delivered) {
           this.rejectToolReply(questionId, new Error(result.reason ?? "Session may not exist or has disconnected."));
           return textToolResult(`Message to "${to}" was not delivered: ${result.reason ?? "Session may not exist or has disconnected."}`, { ok: false, message_id: result.id, reason: result.reason }, true);
@@ -3757,7 +4007,7 @@ ${reply.content.text}${formatAttachments(reply.content.attachments)}`, { ok: tru
     const sessions = await this.client.listSessions();
     return resolveSessionTarget(sessions, to) ?? to;
   }
-  waitForToolReply(from, replyTo, timeoutMs = DEFAULT_ASK_TIMEOUT_MS, signal) {
+  waitForToolReply(from, replyTo, timeoutMs = DEFAULT_ASK_TIMEOUT_MS, signal, team) {
     return new Promise((resolve4, reject) => {
       if (signal?.aborted) {
         reject(new Error("intercom_ask cancelled"));
@@ -3781,7 +4031,7 @@ ${reply.content.text}${formatAttachments(reply.content.attachments)}`, { ok: tru
         reject(new Error(`No reply from "${from}" within ${Math.round(timeoutMs / 1e3)} seconds`));
       }, timeoutMs);
       signal?.addEventListener("abort", onAbort, { once: true });
-      this.toolReplyWaiters.set(replyTo, { from, resolve: resolve4, reject, timeout, cleanup });
+      this.toolReplyWaiters.set(replyTo, { from, team, resolve: resolve4, reject, timeout, cleanup });
     });
   }
   rejectToolReply(replyTo, error) {

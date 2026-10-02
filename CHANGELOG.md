@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.13.0 - 2026-10-02
+
+- Add additive task teams shared with Pi, Claude, and OpenCode; managers can add connected peers and task descriptions in one call without changing registration scopes.
+- Expose exact pending ask/context selectors; ordinary-message replies and blocking-ask replies inherit the original task team, never a mutable current team.
+- Preserve teams in app-server worker replies and tools; add one-time approval guidance and allow initial contact across unrelated memberships.
+
 ## 0.12.2 - 2026-09-30
 
 - Synchronize native `thread/name/updated` notifications into Intercom presence without changing stable session IDs; retain the updated name on broker reconnect.
