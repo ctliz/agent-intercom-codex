@@ -265,7 +265,7 @@ export async function handleMcpRequest(request: JsonRpcRequest, runtime: CodexIn
         protocolVersion: "2025-06-18",
         capabilities: { tools: {} },
         instructions: TASK_TEAM_GUIDANCE,
-        serverInfo: { name: "codex-intercom", version: "0.13.0" },
+        serverInfo: { name: "codex-intercom", version: "0.13.1" },
       });
     case "ping":
       return ok(request.id, {});

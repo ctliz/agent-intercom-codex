@@ -1,7 +1,7 @@
 ---
 name: codex-intercom
 description: |
-  Coordinate with local Pi or Codex sessions through pi-intercom MCP tools.
+  Coordinate with local Pi or Codex sessions through codex-intercom MCP tools.
   Use for same-machine planner-worker workflows, direct peer questions,
   cross-session context sharing, and checking or replying to pending asks.
 ---
@@ -9,7 +9,7 @@ description: |
 # Codex Intercom
 
 Use this skill when you need to coordinate with another local coding-agent
-session through the `pi-intercom` MCP server.
+session through the `codex-intercom` MCP server (or its configured alias).
 
 Codex cannot currently receive unsolicited MCP messages as a fresh visible turn.
 Inbound messages are queued by the MCP server while it is running. Check
@@ -36,15 +36,12 @@ messages to those workers create or resume app-server threads and start turns.
 
 ## Workflow
 
-1. Call `intercom_status` or `intercom_whoami` to verify this session is
-   connected.
-2. Call `intercom_set_summary` with a concise status when other sessions need
-   to discover your role.
+1. For a known recipient, call `intercom_send` directly. Do not run `intercom_whoami`, `intercom_team`, `intercom_list`, or `intercom_status` as routine preflight checks. If the host requires tool discovery, discover only the selected tool and reuse its definition while it remains in context.
+2. Discover peers only when the recipient is unknown, missing, or ambiguous: use `intercom_team` for managed or approved teammates, otherwise `intercom_list`. Check `intercom_status` only for connection errors. Use `intercom_set_summary` only when peers need to discover your role or a meaningful status change.
 3. When the user delegates to named peers and this task has no approved team, ask once whether to form a team with you and those peers. Wait for approval. An explicit create/join request is approval; never ask again for an approved task or inbound team message. After approval, discover peers and call `intercom_join({ name: "billing", create: true, members: ["front", "writer"], work: "Current task" })`. Do not ask the user to join each terminal manually. Reuse the approved team for the same task; new tasks may need new teams. Joining preserves all previous memberships and each team's manager/member roles.
 4. Use `intercom_send` for non-blocking updates and handoffs. Include `team` for task messages, especially when multiple teams are shared. Without a shared team, omit `team` for initial ungrouped contact; unrelated memberships do not block contact or silently create teams.
 5. Use `intercom_ask` only when you need the answer before continuing. Assignments, progress/status checkpoints, notifications, and completion reports use `intercom_send`.
-6. Call `intercom_pending` before ending a coordination turn, then answer
-   blocking asks with `intercom_reply`.
+6. Check `intercom_pending` at natural work boundaries when expecting a response or handling inbound messages, then reply with the original selectors and team. A standalone successful send does not require a pending/identity/status check or a resend. Delivery is not task completion; diagnose uncertain delivery before retrying, and never poll in a tight loop.
 
 ## Patterns
 

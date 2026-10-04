@@ -22,6 +22,13 @@ test("initialize returns MCP capabilities", async () => {
 
   assert.equal(response?.jsonrpc, "2.0");
   assert.deepEqual((response?.result as any).capabilities, { tools: {} });
+  const instructions = (response?.result as any).instructions as string;
+  assert.match(instructions, /For a known recipient, call intercom_send directly/);
+  assert.match(instructions, /Do not run intercom_whoami, intercom_team, intercom_list, or intercom_status as routine preflight checks/);
+  assert.match(instructions, /discover only the selected tool/);
+  assert.match(instructions, /natural work boundaries when expecting a response or handling inbound messages/);
+  assert.match(instructions, /Wait for approval/);
+  assert.match(instructions, /Replies inherit the original message's team/);
 });
 
 test("tools/list includes every intercom tool with complete annotations", async () => {

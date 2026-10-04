@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.13.1 - 2026-10-04
+
+- Add shortest-path MCP instructions and align the Codex skill: send directly to known recipients; discover peers, diagnose connections, publish summaries, and poll inboxes only when needed. Correct the skill's default MCP server name while preserving configured aliases, team approval, and reply threading.
 
 ## 0.13.0 - 2026-10-02
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-process.stderr.write("[agent-intercom-build] package=@ctliz/agent-intercom-codex version=0.13.0 target=coi sourceSha256=04013522326f3042c72f6454a9c79e26d2d1c8de7af57769ed890e50fca514e3\n");
+process.stderr.write("[agent-intercom-build] package=@ctliz/agent-intercom-codex version=0.13.1 target=coi sourceSha256=362021acc1ff448548b73f9d530d295867d7aa13fad07e3fc57d0a44a7e93ddb\n");
 
 // codex/coi.ts
 import { once as once2 } from "node:events";
@@ -3344,7 +3344,13 @@ function formatSessionList(sessions, currentSessionId, currentCwd) {
 }
 
 // codex/team-guidance.ts
-var TASK_TEAM_GUIDANCE = `Intercom task-team rules:
+var TASK_TEAM_GUIDANCE = `Intercom shortest calling path:
+- For a known recipient, call intercom_send directly. Do not run intercom_whoami, intercom_team, intercom_list, or intercom_status as routine preflight checks.
+- Discover peers only when the target is unknown, missing, or ambiguous: intercom_team for managed or approved teammates, otherwise intercom_list. Use intercom_status only for connection errors; intercom_set_summary only for role discovery or meaningful status changes.
+- If the host requires tool discovery, discover only the selected tool and reuse its definition while it remains in context. Do not browse tool-definition directories or read unrelated definitions.
+- A standalone successful send needs no extra identity/status/pending checks or resending. Delivery is not task completion; diagnose uncertain delivery before retrying. Check intercom_pending at natural work boundaries when expecting a response or handling inbound messages, never in a tight loop.
+
+Intercom task-team rules:
 - When the user delegates to named peers and this task has no approved team, ask once whether to form a team with you and those peers. Wait for approval before creating a team or adding peers. An explicit create/join request is approval; never ask again for an approved task or inbound team message.
 - After approval, discover the connected peers, then intercom_join({ name: "launch", create: true, members: ["front", "writer"], work: "Current task" }) adds everyone in one call. Do not ask the user to join each terminal manually.
 - Membership is additive: joining another team preserves previous teams. Reuse the approved team for the same task; a different task may need a different team.
