@@ -43,6 +43,8 @@ messages to those workers create or resume app-server threads and start turns.
 5. Use `intercom_ask` only when you need the answer before continuing. Assignments, progress/status checkpoints, notifications, and completion reports use `intercom_send`.
 6. Check `intercom_pending` at natural work boundaries when expecting a response or handling inbound messages, then reply with the original selectors and team. A standalone successful send does not require a pending/identity/status check or a resend. Delivery is not task completion; diagnose uncertain delivery before retrying, and never poll in a tight loop.
 
+Delegation requires a reachable return address. Use this persistent MCP runtime or a `coi` session for assignments, questions, and completion reports. Do not work around unavailable tools by creating a random one-shot `IntercomClient`, sending a task, and immediately disconnecting: the recipient's later response will fail with `Session not found`. For a shell-only acknowledgement, the Pi package's `intercom-send --wait-reply 60 <recipient> <message>` keeps its independent sender alive until the first response; ongoing work still needs a persistent session. If a reply fails to an offline sender, check delivery evidence before resending the original task.
+
 ## Patterns
 
 Planner delegates without waiting:

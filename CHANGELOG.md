@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.13.2 - 2026-10-11
+
+- Require persistent MCP or `coi` return addresses for task delegation so later replies can reach the original sender. Document shell-only reply waiting and checking delivery evidence before resending tasks.
+- Add a manual release trigger that validates the selected tag against its package version and `main`.
+
 ## 0.13.1 - 2026-10-04
 
 - Add shortest-path MCP instructions and align the Codex skill: send directly to known recipients; discover peers, diagnose connections, publish summaries, and poll inboxes only when needed. Correct the skill's default MCP server name while preserving configured aliases, team approval, and reply threading.
