@@ -202,14 +202,17 @@ export function buildToolDefinitions(runtime: CodexIntercomRuntime): ToolDefinit
     },
     {
       name: "intercom_pending",
-      description: "Read unread inbound messages and unresolved asks for this Codex session.",
+      description: "Read unread inbound messages and unresolved asks. When awaiting delegated results, use wait_ms: 60000 and mark_read: true to wait for incoming completion reports without ending the Codex turn. Repeat after a timeout while results are still required. Plain MCP cannot wake an idle Codex turn; use coi for automatic wake-on-message.",
       inputSchema: {
         type: "object",
-        properties: { mark_read: { type: "boolean", default: false } },
+        properties: {
+          mark_read: { type: "boolean", default: false },
+          wait_ms: { type: "integer", minimum: 0, maximum: 60000, default: 0, description: "Wait up to this many milliseconds if the inbox is empty. Returns immediately when a message arrives." },
+        },
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
-      handler: async (args) => runtime.pending(asBoolean(args.mark_read, false)),
+      handler: async (args, signal) => runtime.pending(asBoolean(args.mark_read, false), args.wait_ms === undefined ? 0 : args.wait_ms as number, signal),
     },
     {
       name: "intercom_reply",
@@ -265,7 +268,7 @@ export async function handleMcpRequest(request: JsonRpcRequest, runtime: CodexIn
         protocolVersion: "2025-06-18",
         capabilities: { tools: {} },
         instructions: TASK_TEAM_GUIDANCE,
-        serverInfo: { name: "codex-intercom", version: "0.13.1" },
+        serverInfo: { name: "codex-intercom", version: "0.13.3" },
       });
     case "ping":
       return ok(request.id, {});

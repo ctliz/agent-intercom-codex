@@ -55,6 +55,59 @@ function session(overrides: Partial<SessionInfo>): SessionInfo {
   };
 }
 
+test("pending waits for ordinary completion messages and consumes queued messages immediately", { timeout: 1000 }, async () => {
+  const client = new FakeIntercomClient();
+  const runtime = new CodexIntercomRuntime(buildCodexRuntimeIdentity({}, "/tmp", 123), {
+    clientFactory: () => client as unknown as IntercomClient, prepareConnection: async () => {},
+  });
+  try {
+    const waiting = runtime.pending(true, 60000);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(client.connected, true);
+    client.emit("message", session({ id: "pi-worker", model: "pi" }), {
+      id: "done-1", timestamp: Date.now(), expectsReply: false, content: { text: "Task completed" },
+    }, "delivery-1");
+    assert.match((await waiting).content[0].text!, /Task completed/);
+    assert.deepEqual((await runtime.pending()).structuredContent?.unread_messages, []);
+    client.emit("message", session({}), {
+      id: "done-2", timestamp: Date.now(), content: { text: "Already queued" },
+    }, "delivery-2");
+    assert.match((await runtime.pending(true, 60000)).content[0].text!, /Already queued/);
+    assert.deepEqual((await runtime.pending()).structuredContent?.unread_messages, []);
+  } finally {
+    await runtime.disconnect();
+  }
+});
+
+test("pending handles timeout, cancellation, disconnect and invalid waits", { timeout: 1000 }, async () => {
+  const client = new FakeIntercomClient();
+  const runtime = new CodexIntercomRuntime(buildCodexRuntimeIdentity({}, "/tmp", 123), {
+    clientFactory: () => client as unknown as IntercomClient, prepareConnection: async () => {},
+  });
+  try {
+    for (const value of [-1, 60001, 1.5, NaN, "100" as any]) {
+      await assert.rejects(runtime.pending(false, value), /wait_ms/);
+    }
+    assert.match((await runtime.pending(false, 1)).content[0].text!, /No unread messages/);
+    const controller = new AbortController();
+    const cancelled = assert.rejects(runtime.pending(false, 60000, controller.signal), /cancelled/);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    controller.abort();
+    await cancelled;
+    await assert.rejects(runtime.pending(false, 60000, controller.signal), /cancelled/);
+    const dropped = assert.rejects(runtime.pending(false, 60000), /broker restarted/);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    client.drop();
+    await dropped;
+    const closed = assert.rejects(runtime.pending(false, 60000), /disconnected/);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await runtime.disconnect();
+    await closed;
+  } finally {
+    await runtime.disconnect();
+  }
+});
+
 test("buildCodexRuntimeIdentity uses explicit environment overrides", () => {
   const identity = buildCodexRuntimeIdentity({
     CODEX_INTERCOM_SESSION_ID: "codex-fixed",

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.3 - 2026-10-12
+
+- Keep plain MCP delegation turns waiting for completion reports with `intercom_pending({ mark_read: true, wait_ms: 60000 })`. Return on incoming messages, timeout, cancellation, or disconnect; connect the inbox reader even when no other intercom tool has been called. Clarify that automatic wake after a completed turn requires `coi`.
+
 ## 0.13.2 - 2026-10-11
 
 - Require persistent MCP or `coi` return addresses for task delegation so later replies can reach the original sender. Document shell-only reply waiting and checking delivery evidence before resending tasks.

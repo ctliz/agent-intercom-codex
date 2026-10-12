@@ -12,7 +12,7 @@ function fakeRuntime() {
     setSummary: async (summary: string) => ({ content: [{ type: "text" as const, text: `summary:${summary}` }] }),
     send: async (to: string, message: string) => ({ content: [{ type: "text" as const, text: `send:${to}:${message}` }] }),
     ask: async (to: string, message: string, _attachments?: unknown, timeoutMs?: number) => ({ content: [{ type: "text" as const, text: `ask:${to}:${message}:${timeoutMs ?? "default"}` }] }),
-    pending: async () => ({ content: [{ type: "text" as const, text: "pending" }] }),
+    pending: async (_markRead?: boolean, waitMs = 0) => ({ content: [{ type: "text" as const, text: waitMs ? `pending:${waitMs}` : "pending" }] }),
     reply: async (message: string) => ({ content: [{ type: "text" as const, text: `reply:${message}` }] }),
   } as any;
 }
@@ -29,6 +29,8 @@ test("initialize returns MCP capabilities", async () => {
   assert.match(instructions, /natural work boundaries when expecting a response or handling inbound messages/);
   assert.match(instructions, /Wait for approval/);
   assert.match(instructions, /Replies inherit the original message's team/);
+  assert.match(instructions, /wait_ms: 60000/);
+  assert.match(instructions, /do not end the task/);
 });
 
 test("tools/list includes every intercom tool with complete annotations", async () => {
@@ -101,6 +103,30 @@ test("tools/call dispatches to the selected tool", async () => {
   }, fakeRuntime());
 
   assert.equal(((response?.result as any).content[0]).text, "send:worker:hello");
+});
+
+test("intercom_pending forwards the bounded wait and supports cancellation", async () => {
+  const response = await handleMcpRequest({ id: "wait-args", method: "tools/call", params: {
+    name: "intercom_pending", arguments: { mark_read: true, wait_ms: 60000 },
+  } }, fakeRuntime());
+  assert.equal((response?.result as any).content[0].text, "pending:60000");
+  const runtime = fakeRuntime();
+  let entered!: () => void;
+  const ready = new Promise<void>((resolve) => { entered = resolve; });
+  runtime.pending = async (_markRead: boolean, _waitMs: number, signal: AbortSignal) => {
+    entered();
+    return await new Promise((_resolve, reject) => {
+      signal.addEventListener("abort", () => reject(new Error("intercom_pending cancelled")), { once: true });
+    });
+  };
+  const waiting = handleMcpRequest({ id: "wait-cancel", method: "tools/call", params: {
+    name: "intercom_pending", arguments: { wait_ms: 60000 },
+  } }, runtime);
+  await ready;
+  await handleMcpRequest({ method: "notifications/cancelled", params: { requestId: "wait-cancel" } }, runtime);
+  const cancelled = await waiting;
+  assert.equal((cancelled?.result as any).isError, true);
+  assert.match((cancelled?.result as any).content[0].text, /cancelled/);
 });
 
 test("tools/call passes ask timeout through", async () => {

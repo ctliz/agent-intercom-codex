@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-process.stderr.write("[agent-intercom-build] package=@ctliz/agent-intercom-codex version=0.13.2 target=coi sourceSha256=fbde4e826d3f5345ee62299482c0e170bc21f81ac76d32b57a41b76e33c6f071\n");
+process.stderr.write("[agent-intercom-build] package=@ctliz/agent-intercom-codex version=0.13.3 target=coi sourceSha256=283c44d060d22631d58438b9493b767e3c7c7d2758185032c48196d8afd351d1\n");
 
 // codex/coi.ts
 import { once as once2 } from "node:events";
@@ -3349,6 +3349,7 @@ var TASK_TEAM_GUIDANCE = `Intercom shortest calling path:
 - Discover peers only when the target is unknown, missing, or ambiguous: intercom_team for managed or approved teammates, otherwise intercom_list. Use intercom_status only for connection errors; intercom_set_summary only for role discovery or meaningful status changes.
 - If the host requires tool discovery, discover only the selected tool and reuse its definition while it remains in context. Do not browse tool-definition directories or read unrelated definitions.
 - A standalone successful send needs no extra identity/status/pending checks or resending. Delivery is not task completion; diagnose uncertain delivery before retrying. Check intercom_pending at natural work boundaries when expecting a response or handling inbound messages, never in a tight loop.
+- Plain MCP queues incoming messages and cannot wake an idle Codex turn. When the user's task depends on delegated results, continue independent work, then call intercom_pending({ mark_read: true, wait_ms: 60000 }) while results remain outstanding. Process arriving reports and repeat the bounded wait after a timeout; do not end the task just because an immediate inbox check was empty or a wait timed out. Use coi for automatic wake-on-message after a turn has ended.
 
 Intercom task-team rules:
 - When the user delegates to named peers and this task has no approved team, ask once whether to form a team with you and those peers. Wait for approval before creating a team or adding peers. An explicit create/join request is approval; never ask again for an approved task or inbound team message.

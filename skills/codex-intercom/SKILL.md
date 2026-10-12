@@ -16,6 +16,13 @@ Inbound messages are queued by the MCP server while it is running. Check
 `intercom_pending` at natural boundaries, before starting delegated work, and
 when you expect a response.
 
+When the user's task depends on delegated results, keep the turn active: do
+independent work first, then call `intercom_pending({ mark_read: true, wait_ms:
+60000 })`. This waits for ordinary completion messages sent with `intercom_send`.
+Process reports as they arrive and repeat the bounded wait while required
+results remain outstanding. An empty inbox or timeout does not mean the task
+is complete. Use `coi` if messages must wake Codex after its turn has ended.
+
 If the user needs wake-on-message behavior, use or recommend the app-server
 bridge daemon. It exposes configured virtual Codex workers as intercom sessions;
 messages to those workers create or resume app-server threads and start turns.
@@ -31,7 +38,8 @@ messages to those workers create or resume app-server threads and start turns.
 - `intercom_set_summary`: publish a short discoverable status.
 - `intercom_send`: fire-and-forget direct message.
 - `intercom_ask`: send a question and wait for the target's reply.
-- `intercom_pending`: read queued inbound messages and pending asks.
+- `intercom_pending`: read queued inbound messages and pending asks; `wait_ms`
+  waits up to 60000 ms when the inbox is empty.
 - `intercom_reply`: reply to a pending inbound ask.
 
 ## Workflow

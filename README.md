@@ -100,6 +100,16 @@ Incoming messages are queued while the MCP server is running; call
 `intercom_pending` to read them. Wake-on-message workflows require `coi` or the
 app-server bridge.
 
+For delegated work in a plain MCP session, keep the Codex turn active until
+the required reports arrive. `intercom_pending({ mark_read: true, wait_ms:
+60000 })` waits up to one minute for an incoming message and returns as soon
+as it arrives. Already queued messages return immediately. Repeat the bounded
+wait after a timeout while required results remain outstanding. This also
+receives ordinary completion reports sent with `intercom_send`; it does not
+require `intercom_ask` or a correlated reply. Cancelling the tool or disconnecting
+releases the wait. Restart the Codex session after updating the plugin to load
+the new tool schema and coordination instructions.
+
 When an external intercom turn completes, `coi` refreshes the attached remote
 TUI by resuming the same thread. The inbound message and final response then
 appear in the already-open terminal instead of existing only in the saved

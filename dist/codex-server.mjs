@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-process.stderr.write("[agent-intercom-build] package=@ctliz/agent-intercom-codex version=0.13.2 target=codex-server sourceSha256=fbde4e826d3f5345ee62299482c0e170bc21f81ac76d32b57a41b76e33c6f071\n");
+process.stderr.write("[agent-intercom-build] package=@ctliz/agent-intercom-codex version=0.13.3 target=codex-server sourceSha256=283c44d060d22631d58438b9493b767e3c7c7d2758185032c48196d8afd351d1\n");
 
 // codex/server.ts
 import readline from "node:readline";
@@ -2753,6 +2753,7 @@ var CodexIntercomRuntime = class {
   unread = [];
   unresolvedAsks = /* @__PURE__ */ new Map();
   replyWaiters = /* @__PURE__ */ new Map();
+  pendingWaiters = /* @__PURE__ */ new Set();
   clientFactory;
   capturedScopeId;
   prepareConnection;
@@ -2793,6 +2794,7 @@ var CodexIntercomRuntime = class {
       client.acknowledgeMessage(deliveryId);
     });
     client.on("disconnected", (error2) => {
+      for (const finish of this.pendingWaiters) finish(error2);
       for (const waiter of this.replyWaiters.values()) {
         clearTimeout(waiter.timeout);
         waiter.cleanup?.();
@@ -2838,6 +2840,7 @@ var CodexIntercomRuntime = class {
     this.reconnectTimer = null;
   }
   async disconnect() {
+    for (const finish of this.pendingWaiters) finish(new Error("Intercom disconnected"));
     this.reconnectEnabled = false;
     this.clearReconnectTimer();
     if (this.connectPromise) {
@@ -2912,6 +2915,7 @@ Other team memberships are unchanged.`, { ok: true, team: team.name, role: roste
     if (message.expectsReply) {
       this.unresolvedAsks.set(message.id, entry);
     }
+    for (const finish of this.pendingWaiters) finish();
   }
   waitForReply(from, replyTo, timeoutMs = getAskTimeoutMs(), signal, team) {
     return new Promise((resolve3, reject) => {
@@ -3049,7 +3053,28 @@ ${replyText}`, { ok: true, message_id: result.id, reply });
       return textResult(error2 instanceof Error ? error2.message : String(error2), { ok: false }, true);
     }
   }
-  async pending(markRead = false) {
+  async pending(markRead = false, waitMs = 0, signal) {
+    if (!Number.isInteger(waitMs) || waitMs < 0 || waitMs > 6e4) {
+      throw new Error("wait_ms must be an integer between 0 and 60000");
+    }
+    if (signal?.aborted) throw new Error("intercom_pending cancelled");
+    await this.connect();
+    if (signal?.aborted) throw new Error("intercom_pending cancelled");
+    if (waitMs && !this.unread.some((entry) => !entry.read) && !this.unresolvedAsks.size) {
+      await new Promise((resolve3, reject) => {
+        const finish = (error2) => {
+          clearTimeout(timeout);
+          signal?.removeEventListener("abort", onAbort);
+          this.pendingWaiters.delete(finish);
+          if (error2) reject(error2);
+          else resolve3();
+        };
+        const onAbort = () => finish(new Error("intercom_pending cancelled"));
+        const timeout = setTimeout(finish, waitMs);
+        this.pendingWaiters.add(finish);
+        signal?.addEventListener("abort", onAbort, { once: true });
+      });
+    }
     const unreadMessages = this.unread.filter((entry) => !entry.read);
     if (markRead) {
       for (const entry of unreadMessages) entry.read = true;
@@ -3090,6 +3115,7 @@ var TASK_TEAM_GUIDANCE = `Intercom shortest calling path:
 - Discover peers only when the target is unknown, missing, or ambiguous: intercom_team for managed or approved teammates, otherwise intercom_list. Use intercom_status only for connection errors; intercom_set_summary only for role discovery or meaningful status changes.
 - If the host requires tool discovery, discover only the selected tool and reuse its definition while it remains in context. Do not browse tool-definition directories or read unrelated definitions.
 - A standalone successful send needs no extra identity/status/pending checks or resending. Delivery is not task completion; diagnose uncertain delivery before retrying. Check intercom_pending at natural work boundaries when expecting a response or handling inbound messages, never in a tight loop.
+- Plain MCP queues incoming messages and cannot wake an idle Codex turn. When the user's task depends on delegated results, continue independent work, then call intercom_pending({ mark_read: true, wait_ms: 60000 }) while results remain outstanding. Process arriving reports and repeat the bounded wait after a timeout; do not end the task just because an immediate inbox check was empty or a wait timed out. Use coi for automatic wake-on-message after a turn has ended.
 
 Intercom task-team rules:
 - When the user delegates to named peers and this task has no approved team, ask once whether to form a team with you and those peers. Wait for approval before creating a team or adding peers. An explicit create/join request is approval; never ask again for an approved task or inbound team message.
@@ -3268,14 +3294,17 @@ function buildToolDefinitions(runtime2) {
     },
     {
       name: "intercom_pending",
-      description: "Read unread inbound messages and unresolved asks for this Codex session.",
+      description: "Read unread inbound messages and unresolved asks. When awaiting delegated results, use wait_ms: 60000 and mark_read: true to wait for incoming completion reports without ending the Codex turn. Repeat after a timeout while results are still required. Plain MCP cannot wake an idle Codex turn; use coi for automatic wake-on-message.",
       inputSchema: {
         type: "object",
-        properties: { mark_read: { type: "boolean", default: false } },
+        properties: {
+          mark_read: { type: "boolean", default: false },
+          wait_ms: { type: "integer", minimum: 0, maximum: 6e4, default: 0, description: "Wait up to this many milliseconds if the inbox is empty. Returns immediately when a message arrives." }
+        },
         additionalProperties: false
       },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
-      handler: async (args) => runtime2.pending(asBoolean(args.mark_read, false))
+      handler: async (args, signal) => runtime2.pending(asBoolean(args.mark_read, false), args.wait_ms === void 0 ? 0 : args.wait_ms, signal)
     },
     {
       name: "intercom_reply",
@@ -3325,7 +3354,7 @@ async function handleMcpRequest(request, runtime2) {
         protocolVersion: "2025-06-18",
         capabilities: { tools: {} },
         instructions: TASK_TEAM_GUIDANCE,
-        serverInfo: { name: "codex-intercom", version: "0.13.1" }
+        serverInfo: { name: "codex-intercom", version: "0.13.3" }
       });
     case "ping":
       return ok(request.id, {});

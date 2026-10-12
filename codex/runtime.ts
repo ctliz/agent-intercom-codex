@@ -225,6 +225,7 @@ export class CodexIntercomRuntime {
   private unread: PendingInboundMessage[] = [];
   private unresolvedAsks = new Map<string, PendingInboundMessage>();
   private replyWaiters = new Map<string, ReplyWaiter>();
+  private pendingWaiters = new Set<(error?: Error) => void>();
 
   private readonly clientFactory: () => IntercomClient;
   private capturedScopeId: string | undefined;
@@ -270,6 +271,7 @@ export class CodexIntercomRuntime {
       client.acknowledgeMessage(deliveryId);
     });
     client.on("disconnected", (error: Error) => {
+      for (const finish of this.pendingWaiters) finish(error);
       for (const waiter of this.replyWaiters.values()) {
         clearTimeout(waiter.timeout);
         waiter.cleanup?.();
@@ -318,6 +320,7 @@ export class CodexIntercomRuntime {
   }
 
   async disconnect(): Promise<void> {
+    for (const finish of this.pendingWaiters) finish(new Error("Intercom disconnected"));
     this.reconnectEnabled = false;
     this.clearReconnectTimer();
     if (this.connectPromise) {
@@ -393,6 +396,7 @@ export class CodexIntercomRuntime {
     if (message.expectsReply) {
       this.unresolvedAsks.set(message.id, entry);
     }
+    for (const finish of this.pendingWaiters) finish();
   }
 
   private waitForReply(from: string, replyTo: string, timeoutMs = getAskTimeoutMs(), signal?: AbortSignal, team?: string): Promise<Message> {
@@ -535,7 +539,28 @@ export class CodexIntercomRuntime {
     }
   }
 
-  async pending(markRead = false): Promise<ToolResult> {
+  async pending(markRead = false, waitMs = 0, signal?: AbortSignal): Promise<ToolResult> {
+    if (!Number.isInteger(waitMs) || waitMs < 0 || waitMs > 60000) {
+      throw new Error("wait_ms must be an integer between 0 and 60000");
+    }
+    if (signal?.aborted) throw new Error("intercom_pending cancelled");
+    await this.connect();
+    if (signal?.aborted) throw new Error("intercom_pending cancelled");
+    if (waitMs && !this.unread.some((entry) => !entry.read) && !this.unresolvedAsks.size) {
+      await new Promise<void>((resolve, reject) => {
+        const finish = (error?: Error) => {
+          clearTimeout(timeout);
+          signal?.removeEventListener("abort", onAbort);
+          this.pendingWaiters.delete(finish);
+          if (error) reject(error);
+          else resolve();
+        };
+        const onAbort = () => finish(new Error("intercom_pending cancelled"));
+        const timeout = setTimeout(finish, waitMs);
+        this.pendingWaiters.add(finish);
+        signal?.addEventListener("abort", onAbort, { once: true });
+      });
+    }
     const unreadMessages = this.unread.filter((entry) => !entry.read);
     if (markRead) {
       for (const entry of unreadMessages) entry.read = true;
